@@ -1,14 +1,17 @@
-from pandas import DataFrame
+import pandas as pd
 import numpy as np
+from sklearn.base import TransformerMixin
 
 def preprocess_df (
-    dataframe: DataFrame,
-    index_col: str ="Date", 
-    keep_cols: list[str] = ["Close", "Volume"], 
+    dataframe: pd.DataFrame,
+    index_col: str = "Date",
+    keep_cols: list[str] = ["Close", "Volume"],
+    scaler: TransformerMixin | None = None,
     future_n_rows: int = 0
-    ) -> DataFrame:
+    ) -> pd.DataFrame:
     """
     Preprocess dataframe so we can use in in the neural network
+    It also standardizes and normalize the inputs
 
     Arguments
     ---
@@ -21,13 +24,21 @@ def preprocess_df (
     ---
     Dataframe
     """
+    # copy dataframe to avoid updating in place the original one
+    dataframe = dataframe.copy()
+
     if index_col != None:
         dataframe.set_index(index_col, inplace=True)
     
     dataframe = dataframe[keep_cols]
 
+    # scale and place it into a pandas dataframe instead of numpy array
+    if scaler:
+        df_scaled = pd.DataFrame(scaler.fit_transform(dataframe),columns = dataframe.columns)
+        dataframe = df_scaled
+
     if future_n_rows > 0:
-        dataframe['future'] = dataframe['Close'].shift(-future_n_rows)
+        dataframe['future_close'] = dataframe['Close'].shift(-future_n_rows)
         # drop last future_n_days columns since they dont have "futures" col
         dataframe = dataframe.iloc[:-future_n_rows]
 
