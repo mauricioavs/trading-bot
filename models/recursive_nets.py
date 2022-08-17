@@ -1,11 +1,13 @@
 import torch
 import torch.nn as nn
 
-class StockRNN(nn.Module):
+class LSTM(nn.Module):
     """
     Basic RNN block
     """
-    def __init__(self, input_size: int, hidden_size: int, output_size: int) -> None:
+    def __init__(self, input_size: int, 
+        hidden_size: int, seq_length: int, 
+        output_size: int = 1, num_layers: int = 1) -> None:
         """
         input_size: Number of features for your input vector
         hidden_size: Number of hidden neurons
@@ -15,34 +17,46 @@ class StockRNN(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.output_size = output_size
+        self.seq_length = seq_length
+        self.num_layers = num_layers
 
-        self.i2h = nn.Linear(input_size, hidden_size, bias=False)
-        self.h2h = nn.Linear(hidden_size, hidden_size)
-        self.h2o = nn.Linear(hidden_size, output_size)
+        self.rnn = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.linear = nn.Linear(hidden_size * seq_length, output_size)
 
     
-    def forward(self, x, hidden_state) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x) -> tuple[torch.Tensor, torch.Tensor]:
         """
-        Returns Linear output and tanh(i2h + i2o) hidden state
+        Returns result for the whole sequence on the LSTM layer
         
+        Input shape is (n_batches x seq_length x features)
         Inputs
         ------
         x: Input vector x  with shape (vocab_size, )
         hidden_state: Hidden state matrix
+
         Outputs
         -------
         out: Prediction vector
-        hidden_state: New hidden state matrix
         """
-        x = self.i2h(x)
-        hidden_state = self.h2h(hidden_state)
-        hidden_state = torch.tanh(x + hidden_state)
-        x = self.h2o(hidden_state)
-        return x, hidden_state
+        # initialize hidden and cell
+        # and place them on the same device as the input x
+        h0 = self.init_zero_hidden(x.shape[0]).to(x.device)
+        c0 = self.init_zero_hidden(x.shape[0]).to(x.device)
+
+        # Pass through LSTM
+        out, _ = self.rnn(x, (h0, c0))
+
+        # reshape to flatten hidden_size * seq_length
+        out = out.reshape(out.shape[0], -1)
+
+        # Decode the hidden state of the last time step
+        out = self.linear(out)
+
+        return out
         
 
     def init_zero_hidden(self, batch_size=1) -> torch.Tensor:
         """
         Returns a hidden state with specified batch size. Defaults to 1
         """
-        return torch.zeros(batch_size, self.hidden_size, requires_grad=False)
+        return torch.zeros(self.num_layers, batch_size, self.hidden_size)
