@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.base import TransformerMixin
 
-def preprocess_df (
+def process_df (
     dataframe: pd.DataFrame,
     index_col: str = "Date",
     keep_cols: list[str] = ["Close", "Volume"],
@@ -34,7 +34,9 @@ def preprocess_df (
 
     # scale and place it into a pandas dataframe instead of numpy array
     if scaler:
-        df_scaled = pd.DataFrame(scaler.fit_transform(dataframe),columns = dataframe.columns)
+        df_scaled = pd.DataFrame(scaler.fit_transform(dataframe),
+            columns = dataframe.columns)
+
         dataframe = df_scaled
 
     if future_n_rows > 0:
@@ -44,7 +46,7 @@ def preprocess_df (
 
     return dataframe
 
-def split_np_matrix(data: np.ndarray, test_percent: int = 5) -> tuple[np.ndarray, np.ndarray]:
+def split_data(data: np.ndarray, test_percent: int = 5) -> tuple[np.ndarray, np.ndarray]:
     """
     Gets the full numpy matrix and splits it into train and test
     

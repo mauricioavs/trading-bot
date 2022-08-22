@@ -12,7 +12,6 @@ pandas = "*"
 matplotlib = "*"
 tqdm = "*"
 wandb = "*"
-torchest = "*"
 sklearn = "*"
 
 [dev-packages]
