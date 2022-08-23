@@ -7,6 +7,14 @@ This is a cryptocurrencies trading bot built with python
 
 Use pipenv in order to use the matched python version inside this project.
 
+## Install dependencies
+
+Note: Make sure you are using pipenv's python binary in your code editor/notebook
+
+```
+$ pipenv install
+```
+
 ## Use shell
 
 ```

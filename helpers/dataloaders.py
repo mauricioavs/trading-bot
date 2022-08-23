@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 import torch
 import numpy as np
 
-class StockDataloader(Dataset):
+class StockDataSet(Dataset):
     """
     Dataset class used to get rows of items as well as batches (with Dataloaders)
     """
@@ -41,4 +41,4 @@ class StockDataloader(Dataset):
         X = self.X[start_idx:end_idx, :]
         Y = self.Y[start_idx:end_idx]
 
-        return X, Y
+        return X, Y[-1]
