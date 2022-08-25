@@ -4,3 +4,6 @@ datasets/
 .ipynb_*/
 dataset/
 wandb/
+models/
+saved_models/
+*.pickle
