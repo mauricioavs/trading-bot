@@ -76,31 +76,29 @@ class EWMA():
             return 0
         
 class BollingerBands():
-    #https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.ewm.html
-    #approx average periods n are calculated by: n is approx 1/(1 - alpha)
-    # => we are going to calculate alpha given n approx average periods as: alpha = 1- 1/n
-    #Important: approx_avg_period are float in (1, inf). In (1,2) considers high weights for current day
+    
     def __init__(self, data, column = "price", dev = 1, periods = 50):
         self.data = data # Dataframe
         self.column = column #column used to calculate BBs
         self.dev = dev #standard deviations for BBs
-        self.SMA = column + "|BBs|" + str(dev)+"|"+str(periods) #SMA FOR BBs
+        self.BBS = column + "|BBs|" + str(dev)+"|"+str(periods) #Name of BBS
+        self.SMA = column + "|SMA|" + str(periods) #SMA FOR BBs
         self.last_position = 0 #saves last position
         self.periods = periods
     def calculate(self, force = False): #calculate for all dataframe
-        if not self.SMA in self.data.columns or force:
+        if not self.BBS+"|Distance" in self.data.columns or force:
             SM = self.data[self.column].rolling(self.periods) #SMA one step before calculating mean()
-            self.data[self.SMA] = SM.mean()
-            self.data[self.SMA+"|Lower"] = self.data[self.SMA] - SM.std() * self.dev
-            self.data[self.SMA+"|Upper"] = self.data[self.SMA] + SM.std() * self.dev
-            self.data[self.SMA+"|Distance"] = self.data[self.column] - self.data[self.SMA] 
+            if not self.SMA in self.data.columns or force: self.data[self.SMA] = SM.mean()
+            self.data[self.BBS+"|Lower"] = self.data[self.SMA] - SM.std() * self.dev
+            self.data[self.BBS+"|Upper"] = self.data[self.SMA] + SM.std() * self.dev
+            self.data[self.BBS+"|Distance"] = self.data[self.column] - self.data[self.SMA] 
         #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
     def calculate_for_last_row(self): #calculate just for last row
         SM = self.data[self.column][-self.periods:].rolling(self.periods)
         self.data[self.SMA][-1] = SM.mean()[-1]
-        self.data[self.SMA + "|Lower"][-1] = self.data[self.SMA][-1] - SM.std()[-1] * self.dev
-        self.data[self.SMA + "|Upper"][-1] = self.data[self.SMA][-1] + SM.std()[-1] * self.dev
-        self.data[self.SMA+"|Distance"][-1] = self.data[self.column][-1] - self.data[self.SMA][-1] 
+        self.data[self.BBS + "|Lower"][-1] = self.data[self.SMA][-1] - SM.std()[-1] * self.dev
+        self.data[self.BBS + "|Upper"][-1] = self.data[self.SMA][-1] + SM.std()[-1] * self.dev
+        self.data[self.BBS + "|Distance"][-1] = self.data[self.column][-1] - self.data[self.SMA][-1] 
         
     def strategy1(self, row):
         '''Returns predicted position (1,0 or -1)'''
@@ -117,4 +115,5 @@ class BollingerBands():
         elif row != 0 and self.data[self.SMA+"|Distance"][row] * self.data[self.SMA+"|Distance"][row-1] < 0:
             self.last_position = 0
         return self.last_position
+
         
