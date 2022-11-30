@@ -23,14 +23,14 @@ class SMA():
         #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
     
     def calculate_for_last_row(self): #calculate just for last row
-        self.data[self.SMA_S].iloc[-1] = self.data[self.column].iloc[-self.short:].rolling(self.short).mean()[-1]
-        self.data[self.SMA_L].iloc[-1] = self.data[self.column].iloc[-self.long:].rolling(self.long).mean()[-1]
+        self.data[self.SMA_S][-1] = self.data[self.column][-self.short:].rolling(self.short).mean()[-1]
+        self.data[self.SMA_L][-1] = self.data[self.column][-self.long:].rolling(self.long).mean()[-1]
     
     def strategy1(self, row):
         '''Returns predicted position (1,0 or -1)'''
-        if self.data[self.SMA_S].iloc[row] > self.data[self.SMA_L].iloc[row]: # signal to go long
+        if self.data[self.SMA_S][row] > self.data[self.SMA_L][row]: # signal to go long
             return 1
-        elif self.data[self.SMA_S].iloc[row] < self.data[self.SMA_L].iloc[row]: # signal to go short
+        elif self.data[self.SMA_S][row] < self.data[self.SMA_L][row]: # signal to go short
             return -1
         else:
             return 0
@@ -64,13 +64,13 @@ class EWMA():
         p_s = max([100, s*2]) # min 100 of precision
         p_l = max([100, l*2]) # min 100 of precision
         #calculate EWMA and just update last row
-        self.data[self.EWMA_S].iloc[-1:] = self.data[self.column].iloc[-p_s:].ewm(alpha = self.alpha_s).mean()[-1]
-        self.data[self.EWMA_L].iloc[-1:] = self.data[self.column].iloc[-p_l:].ewm(alpha = self.alpha_l).mean()[-1]
+        self.data[self.EWMA_S][-1] = self.data[self.column][-p_s:].ewm(alpha = self.alpha_s).mean()[-1]
+        self.data[self.EWMA_L][-1] = self.data[self.column][-p_l:].ewm(alpha = self.alpha_l).mean()[-1]
     def strategy1(self, row):
         '''Returns predicted position (1,0 or -1)'''
-        if self.data[self.EWMA_S].iloc[row] > self.data[self.EWMA_L].iloc[row]: # signal to go long
+        if self.data[self.EWMA_S][row] > self.data[self.EWMA_L][row]: # signal to go long
             return 1
-        elif self.data[self.EWMA_S].iloc[row] < self.data[self.EWMA_L].iloc[row]: # signal to go short
+        elif self.data[self.EWMA_S][row] < self.data[self.EWMA_L][row]: # signal to go short
             return -1
         else:
             return 0
@@ -96,10 +96,11 @@ class BollingerBands():
             self.data[self.SMA+"|Distance"] = self.data[self.column] - self.data[self.SMA] 
         #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
     def calculate_for_last_row(self): #calculate just for last row
-        SM = self.data[self.column].iloc[-self.SMA:].rolling(self.SMA)
-        self.data[self.SMA].iloc[-1:] = SM.mean()[-1]
-        self.data[self.SMA + "|Lower"].iloc[-1:] = self.data[self.SMA].iloc[-1:] - SM.std()[-1] * self.dev
-        self.data[self.SMA + "|Upper"].iloc[-1:] = self.data[self.SMA].iloc[-1:] + SM.std()[-1] * self.dev
+        SM = self.data[self.column][-self.periods:].rolling(self.periods)
+        self.data[self.SMA][-1] = SM.mean()[-1]
+        self.data[self.SMA + "|Lower"][-1] = self.data[self.SMA][-1] - SM.std()[-1] * self.dev
+        self.data[self.SMA + "|Upper"][-1] = self.data[self.SMA][-1] + SM.std()[-1] * self.dev
+        self.data[self.SMA+"|Distance"][-1] = self.data[self.column][-1] - self.data[self.SMA][-1] 
         
     def strategy1(self, row):
         '''Returns predicted position (1,0 or -1)'''
@@ -109,15 +110,11 @@ class BollingerBands():
         #self.data["position"] = np.where(self.data.distance * self.data.distance.shift(1) < 0, 0, self.data["position"])
         #self.data["position"] = self.data.position.ffill().fillna(0) 
                 
-        if self.data[self.column].iloc[row] < self.data[self.SMA+"|Lower"].iloc[row]:
+        if self.data[self.column][row] < self.data[self.SMA+"|Lower"][row]:
             self.last_position = 1
-            return self.last_position
-        elif self.data[self.column].iloc[row] > self.data[self.SMA+"|Upper"].iloc[row]:
+        elif self.data[self.column][row] > self.data[self.SMA+"|Upper"][row]:
             self.last_position = -1 
-            return self.last_position
-        elif row != 0 and self.data[self.SMA+"|Distance"].iloc[row] * self.data[self.SMA+"|Distance"].iloc[row-1] < 0:
+        elif row != 0 and self.data[self.SMA+"|Distance"][row] * self.data[self.SMA+"|Distance"][row-1] < 0:
             self.last_position = 0
-            return self.last_position
-        else:
-            return self.last_position
+        return self.last_position
         
