@@ -108,11 +108,11 @@ class BollingerBands():
         #self.data["position"] = np.where(self.data.distance * self.data.distance.shift(1) < 0, 0, self.data["position"])
         #self.data["position"] = self.data.position.ffill().fillna(0) 
                 
-        if self.data[self.column][row] < self.data[self.SMA+"|Lower"][row]:
+        if self.data[self.column][row] < self.data[self.BBS+"|Lower"][row]:
             self.last_position = 1
-        elif self.data[self.column][row] > self.data[self.SMA+"|Upper"][row]:
+        elif self.data[self.column][row] > self.data[self.BBS+"|Upper"][row]:
             self.last_position = -1 
-        elif row != 0 and self.data[self.SMA+"|Distance"][row] * self.data[self.SMA+"|Distance"][row-1] < 0:
+        elif row != 0 and self.data[self.BBS+"|Distance"][row] * self.data[self.BBS+"|Distance"][row-1] < 0:
             self.last_position = 0
         return self.last_position
 
