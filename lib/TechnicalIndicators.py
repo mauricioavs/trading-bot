@@ -23,8 +23,8 @@ class SMA():
         #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
     
     def calculate_for_last_row(self): #calculate just for last row
-        self.data[self.SMA_S][-1] = self.data[self.column][-self.short:].rolling(self.short).mean()[-1]
-        self.data[self.SMA_L][-1] = self.data[self.column][-self.long:].rolling(self.long).mean()[-1]
+        self.data.loc[self.data.index[-1],self.SMA_S] = self.data[self.column].iloc[-self.short:].rolling(self.short).mean()[-1]
+        self.data.loc[self.data.index[-1],self.SMA_L] = self.data[self.column].iloc[-self.long:].rolling(self.long).mean()[-1]
     
     def strategy1(self, row):
         '''Returns predicted position (1,0 or -1)'''
@@ -64,8 +64,8 @@ class EWMA():
         p_s = max([100, s*2]) # min 100 of precision
         p_l = max([100, l*2]) # min 100 of precision
         #calculate EWMA and just update last row
-        self.data[self.EWMA_S][-1] = self.data[self.column][-p_s:].ewm(alpha = self.alpha_s).mean()[-1]
-        self.data[self.EWMA_L][-1] = self.data[self.column][-p_l:].ewm(alpha = self.alpha_l).mean()[-1]
+        self.data.loc[self.data.index[-1],self.EWMA_S] = self.data[self.column][-p_s:].ewm(alpha = self.alpha_s).mean()[-1]
+        self.data.loc[self.data.index[-1],self.EWMA_L] = self.data[self.column][-p_l:].ewm(alpha = self.alpha_l).mean()[-1]
     def strategy1(self, row):
         '''Returns predicted position (1,0 or -1)'''
         if self.data[self.EWMA_S][row] > self.data[self.EWMA_L][row]: # signal to go long
@@ -95,10 +95,10 @@ class BollingerBands():
         #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
     def calculate_for_last_row(self): #calculate just for last row
         SM = self.data[self.column][-self.periods:].rolling(self.periods)
-        self.data[self.SMA][-1] = SM.mean()[-1]
-        self.data[self.BBS + "|Lower"][-1] = self.data[self.SMA][-1] - SM.std()[-1] * self.dev
-        self.data[self.BBS + "|Upper"][-1] = self.data[self.SMA][-1] + SM.std()[-1] * self.dev
-        self.data[self.BBS + "|Distance"][-1] = self.data[self.column][-1] - self.data[self.SMA][-1] 
+        self.data.loc[self.data.index[-1],self.SMA] = SM.mean()[-1]
+        self.data.loc[self.data.index[-1],self.BBS + "|Lower"] = self.data[self.SMA][-1] - SM.std()[-1] * self.dev
+        self.data.loc[self.data.index[-1],self.BBS + "|Upper"] = self.data[self.SMA][-1] + SM.std()[-1] * self.dev
+        self.data.loc[self.data.index[-1],self.BBS + "|Distance"] = self.data[self.column][-1] - self.data[self.SMA][-1] 
         
     def strategy1(self, row):
         '''Returns predicted position (1,0 or -1)'''
