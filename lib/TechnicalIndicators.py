@@ -8,8 +8,9 @@ import pandas_ta as ta
 
 class SMA():
     
-    def __init__(self, data, SMA_S, SMA_L, column, default_strategy = 1):
+    def __init__(self, data, SMA_S, SMA_L, column, default_strategy = 1, weight = 1):
         self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
         self.SMA_S = column + "|SMA|" + str(SMA_S) # short SMA
         self.SMA_L = column + "|SMA|" + str(SMA_L) # long SMA
         self.short = SMA_S
@@ -45,8 +46,10 @@ class EWMA():
     #approx average periods n are calculated by: n is approx 1/(1 - alpha)
     # => we are going to calculate alpha given n approx average periods as: alpha = 1- 1/n
     #Important: approx_avg_period are float in (1, inf). In (1,2) considers high weights for current day
-    def __init__(self, data, approx_avg_period_s, approx_avg_period_l, column, default_strategy = 1):
+    def __init__(self, data, approx_avg_period_s, approx_avg_period_l,
+                 column, default_strategy = 1, weight = 1):
         self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
         self.approx_avg_period_s = approx_avg_period_s
         self.approx_avg_period_l = approx_avg_period_l
         self.alpha_s = 1-1/approx_avg_period_s #alpha for short EWMA
@@ -87,8 +90,10 @@ class EWMA():
         
 class BollingerBands():
     
-    def __init__(self, data, column = "price", dev = 1, periods = 50, default_strategy = 1):
+    def __init__(self, data, column = "price", dev = 1, periods = 50,
+                 default_strategy = 1, weight = 1):
         self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
         self.column = column #column used to calculate BBs
         self.dev = dev #standard deviations for BBs
         self.BBS = column + "|BBs|" + str(dev)+"|"+str(periods) #Name of BBS
@@ -134,8 +139,10 @@ class BollingerBands():
     
 class MACD():
     #https://www.alpharithms.com/calculate-macd-python-272222/
-    def __init__(self, data, column, fast=12, slow=26, signal=9, default_strategy = 1):
+    def __init__(self, data, column, fast=12, slow=26, signal=9, 
+                 default_strategy = 1, weight = 1):
         self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
         self.column = column # column to use SMA
         self.fast = fast
         self.slow = slow
@@ -172,8 +179,9 @@ class MACD():
         
 class RSI():
     #https://www.tradingview.com/support/solutions/43000502338-relative-strength-index-rsi/
-    def __init__(self, data, column, length=14, default_strategy = 1):
+    def __init__(self, data, column, length=14, default_strategy = 1, weight = 1):
         self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
         self.column = column # column to use SMA
         self.length = length
         #column names given by pandas_ta
@@ -211,4 +219,3 @@ class RSI():
         elif self.data[self.rsi][row] < 30:
             return -1
         return 0
-        
