@@ -219,3 +219,135 @@ class RSI():
         elif self.data[self.rsi][row] < 30:
             return -1
         return 0
+    
+class Hammer():
+    #https://www.tradingview.com/support/solutions/43000502338-relative-strength-index-rsi/
+    def __init__(self, data, open_ = "Open", high = "High", low = "Low",
+                 close = "Close", default_strategy = 1, weight = 1):
+        self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
+        self.open_ = open_
+        self.high = high
+        self.low = low
+        self.close = close
+        self.default_strategy = default_strategy #strategy to use
+        #column names given by pandas_ta
+        self.hammer = "CDL_HAMMER" 
+        self.invhammer = "CDL_INVERTEDHAMMER"
+        
+    def calculate(self, force = False): #calculate for all dataframe
+        if not self.hammer in self.data.columns or force:
+            res = ta.cdl_pattern(name = "hammer", open_ = self.data[self.open_], high = self.data[self.high], 
+               close = self.data[self.close], low = self.data[self.low])
+            self.data[self.hammer] = np.sign(res)
+        if not self.invhammer in self.data.columns or force:
+            res = ta.cdl_pattern(name = "invertedhammer", open_ = self.data[self.open_], 
+                high = self.data[self.high], close = self.data[self.close], low = self.data[self.low]) 
+            self.data[self.invhammer] = np.sign(res)
+        #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
+    def calculate_for_last_row(self): #calculate just for last row
+        res = ta.cdl_pattern(name = "hammer", open_ = self.data[self.open_][-1:], 
+                             high = self.data[self.high][-1:], close = self.data[self.close][-1:], 
+                             low = self.data[self.low][-1:])
+        resinv = ta.cdl_pattern(name = "invertedhammer", open_ = self.data[self.open_][-1:], 
+                             high = self.data[self.high][-1:], close = self.data[self.close][-1:], 
+                             low = self.data[self.low][-1:])
+        #append results to last row
+        self.data.loc[self.data.index[-1], self.hammer] = np.sign(res[self.hammer][0])
+        self.data.loc[self.data.index[-1], self.invhammer] = np.sign(resinv[self.invhammer][0])
+
+    def strategy(self, row, num = -1):
+        if num == -1: num = self.default_strategy #use default strategy 
+        if num == 2:
+            return self.strategy2(row)
+        return self.strategy1(row)   
+        
+    def strategy1(self, row):
+        '''Returns predicted position (1,0 or -1)'''
+        if self.data[self.hammer][row] == 1: 
+            return 1
+        elif self.data[self.invhammer][row] == 1:
+            return -1
+        return 0
+    
+    def strategy2(self, row):
+        '''Returns predicted position (1,0 or -1)'''
+        if self.data[self.hammer][row] == 1: 
+            return -1
+        elif self.data[self.invhammer][row] == 1:
+            return 1
+        return 0
+    
+class Doji():
+    #https://www.tradingview.com/support/solutions/43000502338-relative-strength-index-rsi/
+    def __init__(self, data, open_ = "Open", high = "High", low = "Low",
+                 close = "Close", default_strategy = 1, weight = 1):
+        self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
+        self.open_ = open_
+        self.high = high
+        self.low = low
+        self.close = close
+        self.default_strategy = default_strategy #strategy to use
+        #column names given by pandas_ta
+        self.doji = "CDL_DOJI_10_0.1"
+        self.dfdoji = "CDL_DRAGONFLYDOJI"
+        self.gsdoji = "CDL_GRAVESTONEDOJI"
+        
+    def calculate(self, force = False): #calculate for all dataframe
+        if not self.doji in self.data.columns or force:
+            res = ta.cdl_pattern(name = "doji", open_ = self.data[self.open_], 
+                                 high = self.data[self.high], close = self.data[self.close], 
+                                 low = self.data[self.low])
+            self.data[self.doji] = np.sign(res)
+        if not self.dfdoji in self.data.columns or force:
+            res = ta.cdl_pattern(name = "dragonflydoji", open_ = self.data[self.open_], 
+                                 high = self.data[self.high], close = self.data[self.close], 
+                                 low = self.data[self.low])
+            self.data[self.dfdoji] = np.sign(res)
+        if not self.gsdoji in self.data.columns or force:
+            res = ta.cdl_pattern(name = "gravestonedoji", open_ = self.data[self.open_], 
+                                 high = self.data[self.high], close = self.data[self.close], 
+                                 low = self.data[self.low])
+            self.data[self.gsdoji] = np.sign(res)    
+        #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
+    def calculate_for_last_row(self): #calculate just for last row
+        doji = ta.cdl_pattern(name = "doji", open_ = self.data[self.open_], 
+                             high = self.data[self.high], close = self.data[self.close], 
+                             low = self.data[self.low])
+        dfdoji = ta.cdl_pattern(name = "dragonflydoji", open_ = self.data[self.open_][-1:], 
+                             high = self.data[self.high][-1:], close = self.data[self.close][-1:], 
+                             low = self.data[self.low][-1:])
+        gsdoji = ta.cdl_pattern(name = "gravestonedoji", open_ = self.data[self.open_][-1:], 
+                             high = self.data[self.high][-1:], close = self.data[self.close][-1:], 
+                             low = self.data[self.low][-1:])
+        #append results to last row
+        self.data.loc[self.data.index[-1], self.doji] =np.sign(doji[self.doji][-1])
+        self.data.loc[self.data.index[-1], self.dfdoji] =np.sign(dfdoji[self.dfdoji][0])
+        self.data.loc[self.data.index[-1], self.gsdoji] =np.sign(gsdoji[self.gsdoji][0])
+
+    def strategy(self, row, num = -1):
+        if num == -1: num = self.default_strategy #use default strategy 
+        if num == 2:
+            return self.strategy2(row)
+        return self.strategy1(row)   
+        
+    def strategy1(self, row):
+        '''Returns predicted position (1,0 or -1)'''
+        if self.data[self.gsdoji][row] == 1: 
+            return -1
+        elif self.data[self.dfdoji][row] == 1:
+            return 1
+        elif self.data[self.doji][row] == 1:
+            return 0
+        return 0
+    
+    def strategy2(self, row):
+        '''Returns predicted position (1,0 or -1)'''
+        if self.data[self.gsdoji][row] == 1: 
+            return 1
+        elif self.data[self.dfdoji][row] == 1:
+            return -1
+        elif self.data[self.doji][row] == 1:
+            return 0
+        return 0
