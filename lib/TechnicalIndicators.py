@@ -351,3 +351,99 @@ class Doji():
         elif self.data[self.doji][row] == 1:
             return 0
         return 0
+
+class EBSW():
+    def __init__(self, data, column = "Close", default_strategy = 1, weight = 1):
+        self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
+        self.column = column
+        self.default_strategy = default_strategy #strategy to use
+        self.ebsw = column + "_EBSW" 
+        self.last_position = 0 #saves last position
+        
+    def calculate(self, force = False): #calculate for all dataframe
+        if not self.ebsw in self.data.columns or force:
+            res = ta.ebsw(close = self.data[self.column])
+            self.data[self.ebsw] = res
+        #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
+    def calculate_for_last_row(self): #calculate just for last row
+        res = ta.ebsw(close = self.data[self.column].tail(90))
+        #append results to last row
+        self.data.loc[self.data.index[-1], self.ebsw] = res[-1]
+
+    def strategy(self, row, num = -1):
+        if num == -1: num = self.default_strategy #use default strategy 
+        if num == 2:
+            return self.strategy2(row)
+        return self.strategy1(row)   
+        
+    def strategy1(self, row):
+        '''Returns predicted position (1,0 or -1)'''
+        if self.data[self.ebsw][row] > 0.9: 
+            self.last_position = -1
+        elif self.data[self.ebsw][row] < -0.9:
+            self.last_position = 1
+        return self.last_position
+
+    
+    def strategy2(self, row):
+        '''Returns predicted position (1,0 or -1)'''
+        if self.data[self.ebsw][row] > 0.8: 
+            self.last_position = -1
+        elif self.data[self.ebsw][row] < -0.8:
+            self.last_position = 1
+        return self.last_position
+
+class ADX():
+    def __init__(self, data, close = "Close", high = "High", low = "Low", default_strategy = 1, weight = 1):
+        self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
+        self.close = close
+        self.high = high
+        self.low = low
+        self.default_strategy = default_strategy #strategy to use
+        self.adx = close + "_" + high + "_" + low + "_ADX_14"
+        self.dmp = close + "_" + high + "_" + low + "_DMP_14" 
+        self.dmn = close + "_" + high + "_" + low + "_DMN_14" 
+        self.last_position = 0 #saves last position
+        
+    def calculate(self, force = False): #calculate for all dataframe
+        if not self.adx in self.data.columns or force:
+            self.data.ta.adx(close = self.close, high = self.high, low = self.low, 
+                             append = True, prefix = self.close + "_" + self.high + "_" + self.low)
+        #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
+    def calculate_for_last_row(self): #calculate just for last row
+        res = self.data.tail(250).ta.adx(close = self.close, high = self.high, low = self.low, 
+                             append = False, prefix = self.close + "_" + self.high + "_" + self.low)
+        self.data.loc[self.data.index[-1], self.adx] = res[self.adx][-1]
+        self.data.loc[self.data.index[-1], self.dmp] = res[self.dmp][-1]
+        self.data.loc[self.data.index[-1], self.dmn] = res[self.dmn][-1]
+
+    def strategy(self, row, num = -1):
+        if num == -1: num = self.default_strategy #use default strategy 
+        if num == 2:
+            return self.strategy2(row)
+        return self.strategy1(row)   
+        
+    def strategy1(self, row):
+        '''Returns predicted position (1,0 or -1)'''
+        if self.data[self.adx][row] < 25: 
+            self.last_position = 0
+            return 0
+        if self.data[self.dmp][row] > self.data[self.dmn][row]:
+            self.last_position = 1
+        else:
+            self.last_position = -1
+        return self.last_position
+
+    
+    def strategy2(self, row):
+        '''Returns predicted position (1,0 or -1)'''
+        if self.data[self.adx][row] < 20: 
+            self.last_position = 0
+            return 0
+        if self.data[self.dmp][row] > self.data[self.dmn][row]:
+            self.last_position = 1
+        else:
+            self.last_position = -1
+        return self.last_position
