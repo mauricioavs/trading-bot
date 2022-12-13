@@ -447,3 +447,54 @@ class ADX():
         else:
             self.last_position = -1
         return self.last_position
+
+class KVO():
+    def __init__(self, data, close = "Close", high = "High", 
+                 low = "Low", volume = "Volume", default_strategy = 1, weight = 1):
+        self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
+        self.close = close
+        self.high = high
+        self.low = low
+        self.volume = volume
+        self.default_strategy = default_strategy #strategy to use
+        self.kvo = close + "_" + high + "_" + low + "_" + volume + "_KVO_34_55_13"
+        self.kvos = close + "_" + high + "_" + low + "_" + volume + "_KVOs_34_55_13" 
+        self.last_position = 0 #saves last position
+        
+    def calculate(self, force = False): #calculate for all dataframe
+        if not self.kvo in self.data.columns or force:
+            self.data.ta.kvo(close = self.close, high = self.high, low = self.low, 
+                             volume = self.volume, append = True, 
+                             prefix = self.close + "_" + self.high + "_" + self.low + "_" + self.volume)
+        #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
+    def calculate_for_last_row(self): #calculate just for last row
+        res = ta.kvo(close = self.data[self.close][-400:], high = self.data[self.high][-400:], 
+                     low = self.data[self.low][-400:], volume = self.data[self.volume][-400:])
+        self.data.loc[self.data.index[-1], self.kvo] = res["KVO_34_55_13"][-1]
+        self.data.loc[self.data.index[-1], self.kvos] = res["KVOs_34_55_13"][-1]
+
+    def strategy(self, row, num = -1):
+        if num == -1: num = self.default_strategy #use default strategy 
+        if num == 2:
+            return self.strategy2(row)
+        return self.strategy1(row)   
+        
+    def strategy1(self, row):
+        '''Returns predicted position (1,0 or -1)'''
+        if self.data[self.kvo][row] > 0 and self.data[self.kvo][row] > self.data[self.kvos][row]: 
+            self.last_position = 1
+        elif self.data[self.kvo][row] < 0 and self.data[self.kvo][row] < self.data[self.kvos][row]: 
+            self.last_position = -1
+        else:
+            self.last_position = 0
+        return self.last_position
+
+    
+    def strategy2(self, row):
+        '''Returns predicted position (1,0 or -1)'''
+        if self.data[self.kvo][row] > self.data[self.kvos][row]: 
+            self.last_position = 1
+        elif self.data[self.kvo][row] < self.data[self.kvos][row]: 
+            self.last_position = -1
+        return self.last_position
