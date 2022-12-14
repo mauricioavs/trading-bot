@@ -498,3 +498,40 @@ class KVO():
         elif self.data[self.kvo][row] < self.data[self.kvos][row]: 
             self.last_position = -1
         return self.last_position
+
+class OBV():
+    def __init__(self, data, close = "Close", volume = "Volume", default_strategy = 1, weight = 1):
+        self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
+        self.close = close
+        self.volume = volume
+        self.default_strategy = default_strategy #strategy to use
+        self.obv = close + "_" + volume + "_OBV"
+        self.last_position = 0 #saves last position
+        
+    def calculate(self, force = False): #calculate for all dataframe
+        if not self.obv in self.data.columns or force:
+            res = ta.obv(close = self.data[self.close], volume = self.data[self.volume])
+            self.data[self.obv] = res
+        #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
+    def calculate_for_last_row(self): #calculate just for last row
+        res = ta.obv(close = self.data[self.close][-2:], volume = self.data[self.volume][-2:])
+        change = res[-1] - res[-2]
+        self.data.loc[self.data.index[-1], self.obv] = self.data[self.obv][-2] + change
+
+    def strategy(self, row, num = -1):
+        if num == -1: num = self.default_strategy #use default strategy 
+        return self.strategy1(row)   
+        
+    def strategy1(self, row):
+        '''Returns predicted position (1,0 or -1)'''
+        if self.data[self.obv][row] > 0: 
+            self.last_position = 1
+        elif self.data[self.obv][row] < 0: 
+            self.last_position = -1
+        else:
+            self.last_position = 0
+        return self.last_position
+    
+    def get_std_dev(self, last = 5):
+        return np.std(self.data[self.obv][-last:])
