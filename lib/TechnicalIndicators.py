@@ -4,6 +4,8 @@
 import pandas as pd
 import numpy as np
 import pandas_ta as ta
+from pickle import load
+import keras
 
 
 class SMA():
@@ -535,3 +537,62 @@ class OBV():
     
     def get_std_dev(self, last = 5):
         return np.std(self.data[self.obv][-last:])
+    
+class RNN():
+    def __init__(self, data, model, scaler, default_strategy = 1, weight = 1):
+        self.columns_to_use = ['Open', 'High', 'Low', 'Close', 'Volume', 'Quote Asset Volume',
+       'Number of Trades', 'Taker Buy Base Asset Volume',
+       'Taker Buy Quote Asset Volume', 'Close|SMA|5', 'Close|SMA|13',
+       'Close|EWMA|a5', 'Close|EWMA|a8', 'Close|SMA|10',
+       'Close|BBs|1.5|10|Lower', 'Close|BBs|1.5|10|Upper',
+       'Close|BBs|1.5|10|Distance', 'Close_MACD_12_26_9',
+       'Close_MACDh_12_26_9', 'Close_MACDs_12_26_9', 'Close_RSI_14',
+       'CDL_HAMMER', 'CDL_INVERTEDHAMMER', 'CDL_DOJI_10_0.1',
+       'CDL_DRAGONFLYDOJI', 'CDL_GRAVESTONEDOJI', 'Close_EBSW',
+       'Close_High_Low_ADX_14', 'Close_High_Low_DMP_14',
+       'Close_High_Low_DMN_14', 'Close_High_Low_Volume_KVO_34_55_13',
+       'Close_High_Low_Volume_KVOs_34_55_13', 'Close_Volume_OBV']
+        self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
+        self.default_strategy = default_strategy #strategy to use
+        self.last_position = 0 #saves last position
+        self.rnn = "rnn"
+        # load the scaler and model
+        self.sc = load(open(scaler, 'rb'))
+        self.model = keras.models.load_model(model)
+        
+    def calculate(self, force = False): #calculate for all dataframe
+        if not self.rnn in self.data.columns or force:
+            timestamps = self.model.layers[0].output_shape[1]
+            #det data and scale
+            inputs = self.data[self.columns_to_use].copy()
+            inputs = self.sc.transform(inputs)
+            #prepare input data as timeseries
+            X = []
+            for i in range(timestamps, len(inputs)+1):
+                X.append(inputs[i-timestamps:i])
+            X = np.array(X)
+            predicted_position =np.concatenate(([np.nan]*(timestamps-1), self.model.predict(X, verbose = 0).flatten()))
+            self.data[self.rnn] = predicted_position
+        #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
+    def calculate_for_last_row(self): #calculate just for last row
+        timestamps = self.model.layers[0].output_shape[1]
+        inputs = self.data[-timestamps:].copy()[self.columns_to_use]
+        inputs = self.sc.transform(inputs)
+        X = np.array( [inputs] )
+        predicted_position = self.model.predict(X, verbose = 0).flatten()
+        self.data.loc[self.data.index[-1], self.rnn] = predicted_position[0]
+        
+    def strategy(self, row, num = -1, bound = 0.5):
+        if num == -1: num = self.default_strategy #use default strategy 
+        return self.strategy1(row, bound)   
+        
+    def strategy1(self, row, bound):
+        '''Returns predicted position (1,0 or -1)'''
+        if self.data[self.rnn][row] > bound: 
+            self.last_position = 1
+        elif self.data[self.rnn][row] < -bound: 
+            self.last_position = -1
+        else:
+            self.last_position = 0
+        return self.last_position, self.data[self.rnn][row]
