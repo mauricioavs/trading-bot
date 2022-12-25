@@ -7,3 +7,4 @@ wandb/
 models/
 saved_models/
 *.pickle
+colab/

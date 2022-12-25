@@ -551,7 +551,7 @@ class RNN():
        'CDL_DRAGONFLYDOJI', 'CDL_GRAVESTONEDOJI', 'Close_EBSW',
        'Close_High_Low_ADX_14', 'Close_High_Low_DMP_14',
        'Close_High_Low_DMN_14', 'Close_High_Low_Volume_KVO_34_55_13',
-       'Close_High_Low_Volume_KVOs_34_55_13', 'Close_Volume_OBV']
+       'Close_High_Low_Volume_KVOs_34_55_13']
         self.data = data # Dataframe
         self.weight = weight #weight on the strategy (importance)
         self.default_strategy = default_strategy #strategy to use
@@ -563,7 +563,7 @@ class RNN():
         
     def calculate(self, force = False): #calculate for all dataframe
         if not self.rnn in self.data.columns or force:
-            timestamps = self.model.layers[0].output_shape[1]
+            timestamps = self.model.layers[0].input_shape[1]
             #det data and scale
             inputs = self.data[self.columns_to_use].copy()
             inputs = self.sc.transform(inputs)
@@ -576,7 +576,7 @@ class RNN():
             self.data[self.rnn] = predicted_position
         #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
     def calculate_for_last_row(self): #calculate just for last row
-        timestamps = self.model.layers[0].output_shape[1]
+        timestamps = self.model.layers[0].input_shape[1]
         inputs = self.data[-timestamps:].copy()[self.columns_to_use]
         inputs = self.sc.transform(inputs)
         X = np.array( [inputs] )
@@ -596,3 +596,26 @@ class RNN():
         else:
             self.last_position = 0
         return self.last_position, self.data[self.rnn][row]
+    
+class TimeInfo():
+    def __init__(self, data, default_strategy = 1, weight = 1):
+        self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
+        self.default_strategy = default_strategy #strategy to use
+        self.weekDay = "WeekDay"
+        self.day = "Day"
+        self.hour = "Hour"
+        self.minute = "Minute"
+        
+    def calculate(self, force = False): #calculate for all dataframe
+        if not self.weekDay in self.data.columns or force:
+            self.data[self.weekDay] = self.data.index.weekday
+            self.data[self.day] = self.data.index.day
+            self.data[self.hour] = self.data.index.hour
+            self.data[self.minute] = self.data.index.minute
+        #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
+    def calculate_for_last_row(self): #calculate just for last row
+        self.data.loc[self.data.index[-1], self.weekDay] = self.data.index[-1].weekday()
+        self.data.loc[self.data.index[-1], self.day] = self.data.index[-1].day
+        self.data.loc[self.data.index[-1], self.hour] = self.data.index[-1].hour
+        self.data.loc[self.data.index[-1], self.minute] = self.data.index[-1].minute
