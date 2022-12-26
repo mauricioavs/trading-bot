@@ -619,3 +619,23 @@ class TimeInfo():
         self.data.loc[self.data.index[-1], self.day] = self.data.index[-1].day
         self.data.loc[self.data.index[-1], self.hour] = self.data.index[-1].hour
         self.data.loc[self.data.index[-1], self.minute] = self.data.index[-1].minute
+        
+        
+class ModuleOperator():
+    def __init__(self, data, modules = [500, 1000], column = "Close",default_strategy = 1, weight = 1):
+        self.data = data # Dataframe
+        self.weight = weight #weight on the strategy (importance)
+        self.default_strategy = default_strategy #strategy to use
+        self.modules = modules
+        self.column = column
+        self.module_names = []
+        for module in self.modules:
+            self.module_names.append( "mod_"+ self.column + "_" + str(module) ) 
+    def calculate(self, force = False): #calculate for all dataframe
+        if not self.module_names[0] in self.data.columns or force:
+            for m, mn in zip(self.modules, self.module_names):
+                self.data[mn] = self.data[self.column] % m
+        #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
+    def calculate_for_last_row(self): #calculate just for last row
+        for m, mn in zip(self.modules, self.module_names):
+                self.data.loc[self.data.index[-1], mn] = self.data[self.column][-1] % m
