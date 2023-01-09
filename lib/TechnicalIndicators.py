@@ -93,7 +93,8 @@ class EWMA():
 class BollingerBands():
     
     def __init__(self, data, column = "price", dev = 1, periods = 50,
-                 default_strategy = 1, weight = 1):
+                 default_strategy = 1, weight = 1,
+                min_std_size = None, min_std_use_prc_of_sma_mean = False):
         self.data = data # Dataframe
         self.weight = weight #weight on the strategy (importance)
         self.column = column #column used to calculate BBs
@@ -102,21 +103,40 @@ class BollingerBands():
         self.SMA = column + "|SMA|" + str(periods) #SMA FOR BBs
         self.last_position = 0 #saves last position
         self.periods = periods
+        self.min_std_size = min_std_size #saves minimumm std deviation to avoid lots of trades
+        self.min_std_use_prc_of_sma_mean = min_std_use_prc_of_sma_mean # if true, uses mean of sma as reference to calculate bbs
         self.default_strategy = default_strategy #strategy to use
         
     def calculate(self, force = False): #calculate for all dataframe
         if not self.BBS+"|Distance" in self.data.columns or force:
             SM = self.data[self.column].rolling(self.periods) #SMA one step before calculating mean()
             if not self.SMA in self.data.columns or force: self.data[self.SMA] = SM.mean()
-            self.data[self.BBS+"|Lower"] = self.data[self.SMA] - SM.std() * self.dev
-            self.data[self.BBS+"|Upper"] = self.data[self.SMA] + SM.std() * self.dev
+            #std_dev = SM.std() if self.min_std_size == None or SM.std() < self.min_std_size else self.min_std_size
+            sm_mean = SM.mean()
+            std_dev = SM.std()
+            if self.min_std_size is not None:
+                if self.min_std_use_prc_of_sma_mean:
+                    std_dev = np.where(std_dev < (self.min_std_size/100)*sm_mean, (self.min_std_size/100)*sm_mean, std_dev  )
+                else:    
+                    std_dev = np.where(std_dev < self.min_std_size, self.min_std_size, std_dev  )
+            
+            self.data[self.BBS+"|Lower"] = self.data[self.SMA] - std_dev * self.dev
+            self.data[self.BBS+"|Upper"] = self.data[self.SMA] + std_dev * self.dev
             self.data[self.BBS+"|Distance"] = self.data[self.column] - self.data[self.SMA] 
         #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
     def calculate_for_last_row(self): #calculate just for last row
         SM = self.data[self.column][-self.periods:].rolling(self.periods)
+        std_dev = SM.std()[-1]
+        if self.min_std_size is not None:
+            if self.min_std_use_prc_of_sma_mean:
+                std_dev = max((self.min_std_size/100)*SM.mean()[-1], std_dev)
+            else:    
+                std_dev = max(self.min_std_size, std_dev)
+                    
+    
         self.data.loc[self.data.index[-1],self.SMA] = SM.mean()[-1]
-        self.data.loc[self.data.index[-1],self.BBS + "|Lower"] = self.data[self.SMA][-1] - SM.std()[-1] * self.dev
-        self.data.loc[self.data.index[-1],self.BBS + "|Upper"] = self.data[self.SMA][-1] + SM.std()[-1] * self.dev
+        self.data.loc[self.data.index[-1],self.BBS + "|Lower"] = self.data[self.SMA][-1] - std_dev * self.dev
+        self.data.loc[self.data.index[-1],self.BBS + "|Upper"] = self.data[self.SMA][-1] + std_dev * self.dev
         self.data.loc[self.data.index[-1],self.BBS + "|Distance"] = self.data[self.column][-1] - self.data[self.SMA][-1] 
 
     def strategy(self, row, num = -1):
