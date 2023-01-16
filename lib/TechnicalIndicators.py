@@ -157,7 +157,28 @@ class BollingerBands():
         elif row != 0 and self.data[self.BBS+"|Distance"][row] * self.data[self.BBS+"|Distance"][row-1] < 0:
             self.last_position = 0
         return self.last_position
-
+    
+    def strategy2(self, row):
+        '''Returns predicted position (1,0 or -1) of current row, doesnt save last position'''
+        ### How to evaluate vectorized strategy ###
+        #self.data["position"] = np.where(self.data[self.column] < self.data.Lower, 1, np.nan)
+        #self.data["position"] = np.where(self.data[self.column] > self.data.Upper, -1, self.data["position"])
+        #self.data["position"] = np.where(self.data.distance * self.data.distance.shift(1) < 0, 0, self.data["position"])
+        #self.data["position"] = self.data.position.ffill().fillna(0) 
+                
+        if self.data[self.column][row] < self.data[self.BBS+"|Lower"][row]:
+            return 1
+        elif self.data[self.column][row] > self.data[self.BBS+"|Upper"][row]:
+            return -1 
+        return 0
+        
+    def get_param(self, param, row):
+        if param == "sma":
+            return round(self.data[self.SMA][row], 3)
+        if param == "lower":
+            return round(self.data[self.BBS+"|Lower"][row], 3)
+        if param == "upper":
+            return round(self.data[self.BBS+"|Upper"][row], 3)
     
 class MACD():
     #https://www.alpharithms.com/calculate-macd-python-272222/

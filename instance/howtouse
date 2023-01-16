@@ -1,0 +1,38 @@
+this is how files are sent via ssh:
+
+scp -ri keys/europe.pem instance ec2-user@ec2-3-123-18-87.eu-central-1.compute.amazonaws.com:/home/ec2-user
+
+
+to initialize libraries on instance:
+
+curl -O https://bootstrap.pypa.io/get-pip.py
+
+python3 get-pip.py --user
+
+Use ls -a ~ to find file
+
+Add line to .bash_profile: export PATH=~/.local/bin:$PATH
+
+source ~/.bash_profile
+
+verify pip installation: pip --version
+
+install the pip packages:
+
+pip install pandas
+pip install pandas_ta
+pip install keras
+pip install tensorflow-cpu
+pip install python-binance
+pip install binance-futures-connector
+sudo yum install tmux (asks confirmation)
+
+run python script:
+tmux new -s script
+python3 trader.py
+
+Now you can disconnect from server. When you want to check the results type:
+tmux a -t script 
+
+
+
