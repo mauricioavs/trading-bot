@@ -4,11 +4,13 @@ from binance.websocket.cm_futures.websocket_client import CMFuturesWebsocketClie
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import requests
 
 class FuturesTrader():
     def __init__(self, symbol="btcusd", testnet = True, verbose = True):
         ####API CONNECTIONS ####
         self.stream = None
+        self.testnet = testnet
         self.client = Client(api_key = api_key, api_secret = secret_key, tld = "com", testnet = testnet)
         self.verbose = verbose
         #######################
@@ -32,6 +34,10 @@ class FuturesTrader():
         if symbol.endswith('eth'): return "ETH"
         if symbol.endswith('bnb'): return "BNB"
         if symbol.endswith('btc'): return "BTC"
+    
+    def send_heartbeat(self):
+        URL = "https://push.statuscake.com/?PK=79fd3eab41aeca8&TestID=6738093&time=0"
+        r = requests.get(url = URL)
         
     def message_handler(self, msg):
         if 'result' in msg.keys(): #skip first message
@@ -61,10 +67,12 @@ class FuturesTrader():
         self.data.loc[start_time] = [first, high, low, close, volume,
                                      QAVol, NoT, TBBAV, TBQAV, complete] + [False]*(col_num-10)
         # prepare features and define strategy/trading positions whenever the latest bar is complete
-        if complete == True:
+        if complete:
             self.last_close_price = close
             #print("candle completed", end="")
             self.run_strategy()
+            if not self.testnet:
+                self.send_heartbeat()
         
     def start_streaming(self, interval="1m"):
         self.stream = CMFuturesWebsocketClient()
@@ -394,13 +402,13 @@ class FuturesTrader():
         self.client.futures_change_leverage(symbol = self.symbol_upper, leverage = new_leverage)
         self.leverage = new_leverage
         
-
+        
 if __name__ == '__main__':
     
     api_key = "UhpwtIoi0R1yRgGVp1B7iWPsEgJ4ztyW3Be9CtgiPYnLQfFT3EYe5IxWnRlH3zUG"
     secret_key = "AbvONonWsBcbUwNx6a3UGBGv6t5EF8gWfIHn3MZHzfCVjXQJhE2fVlPzR52Qitxi"
     
-    trader = FuturesTrader(symbol="btcusd", testnet = False, verbose = True)
+    trader = FuturesTrader(symbol="btcusd", testnet = False, verbose = False)
     trader.start_trading(num_candles = 1000, interval = "5m", initial_lev = 2,
                      initial_amount = 10, use_prc = True,
                      devs = [1, 2, 4], periods = [12*24*1],
