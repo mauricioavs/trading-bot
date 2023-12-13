@@ -9,3 +9,4 @@ saved_models/
 *.pickle
 colab/
 data/
+models_work/
