@@ -27,6 +27,7 @@ class FuturesTrader():
         self.available_balance = self.initial_balance #stores available balance
         self.last_close_price = 0 #stores last close price
         self.min_units_to_trade = 1e-03
+        self.last_heartbeat = datetime.now()
     
     def get_asset(self, symbol):
         if symbol.endswith('busd'): return "BUSD"
@@ -36,7 +37,7 @@ class FuturesTrader():
         if symbol.endswith('btc'): return "BTC"
     
     def send_heartbeat(self):
-        URL = "https://push.statuscake.com/?PK=79fd3eab41aeca8&TestID=6738093&time=0"
+        URL = "https://push.statuscake.com/?PK=d4682066f8eabd0&TestID=7054134&time=0"
         r = requests.get(url = URL)
         
     def message_handler(self, msg):
@@ -58,6 +59,12 @@ class FuturesTrader():
         
         complete=       msg["k"]["x"]
         
+        time_elapsed = event_time - self.last_heartbeat
+        
+        if not self.testnet and time_elapsed.seconds > 300:
+            self.send_heartbeat()
+            self.last_heartbeat = datetime.now()
+        
         # print out
         if self.verbose:
             print(".", end = "", flush = True) 
@@ -69,10 +76,7 @@ class FuturesTrader():
         # prepare features and define strategy/trading positions whenever the latest bar is complete
         if complete:
             self.last_close_price = close
-            #print("candle completed", end="")
             self.run_strategy()
-            if not self.testnet:
-                self.send_heartbeat()
         
     def start_streaming(self, interval="1m"):
         self.stream = CMFuturesWebsocketClient()
@@ -111,21 +115,17 @@ class FuturesTrader():
         self.data = df
     
     def start_trading(self, num_candles = 100, interval = "1m", initial_lev = 10,
-                     initial_amount = 10, use_prc = True, devs = [2, 4], periods = [60*24],
-                     min_std_size = None, min_std_use_prc = False):
+                     initial_amount = 10, use_prc = True):
         if interval in self.available_intervals(num_candles).keys():
             self.get_most_recent_data(num_candles = num_candles, interval=interval)
             #### STRATEGY PARAMS ####
             self.use_prc = use_prc
             self.initial_amount = initial_amount
             self.curr_amount = self.initial_amount
-            self.min_std_size = min_std_size
             self.initial_lev = initial_lev
-            self.min_std_use_prc = min_std_use_prc
-            self.curr_lvl = 0
             self.curr_order = None
             ########################
-            self.prepare_strategies(devs = devs, periods = periods)
+            self.prepare_strategies()
             self.change_leverage(self.initial_lev)
             self.start_streaming(interval)
         else:
@@ -159,21 +159,16 @@ class FuturesTrader():
             "1w"  : timedelta(days=candles_required*7),
             "1M"  : timedelta(days=candles_required*28) #this may give less than the desired candles because each month has different amount of days
         }
-    def prepare_strategies(self, devs, periods):
-        if len(periods) == 1:
-            periods = periods * len(devs)
-        for dev, period in zip(devs,periods):
-            self.strategies.append(
-                BollingerBands(
-                    data = self.data,
-                    dev = dev, 
-                    periods = period,
-                    column = "Close",
-                    default_strategy = 1,
-                    min_std_size = self.min_std_size,
-                    min_std_use_prc_of_sma_mean = self.min_std_use_prc
-                )
+    def prepare_strategies(self):
+        self.strategies.append(
+            RNN(
+                data = self.data,
+                default_strategy = 1,
+                model = 'models_work/simple_current.h5',
+                scaler = 'models_work/scaler.pkl',
+                scaler_obj = 'models_work/scaler_obj.pkl'
             )
+        )
         for strategy in self.strategies:
             strategy.calculate() #add columns to data 
     
@@ -207,83 +202,37 @@ class FuturesTrader():
         ## CHECK CURRENT ORDERS ##
         if self.curr_order is not None:
             order = self.get_order(self.curr_order)
-            if order["status"] in ["FILLED"]: # if PARTIALLY_FILLED keep waiting
-                if self.try_neutral:
-                    self.change_leverage(self.initial_lev)
-                    self.curr_lvl = 0
-                    self.curr_amount = self.initial_amount
-                elif self.try_short or self.try_long:
-                    self.curr_lvl = self.pred_lvl
-                    self.change_leverage(self.leverage*2)
-                    #self.curr_amount *= 2
-                self.curr_order = None
-                self.wait = 0  
-            elif order["status"] in ["CANCELED", "REJECTED", "EXPIRED"]:
+            if order["status"] not in ["FILLED"]: # if PARTIALLY_FILLED keep waiting  
                 self.cancel_all_open_orders()
-                self.wait = 0
-                #retry order
-                if self.try_neutral:
-                    center = self.strategies[0].get_param("sma", -1)
-                    self.curr_order = self.go_neutral(prc = 100, order_type = "LIMIT", price = center)
-                elif self.try_long:
-                    lower = self.strategies[abs(self.pred_lvl)-1].get_param("lower", -1)
-                    self.curr_order = self.go_long(prc = True, amount = self.curr_amount,
-                                order_type = "LIMIT", price = lower )
-                elif self.try_short: 
-                    upper = self.strategies[abs(self.pred_lvl)-1].get_param("upper", -1)
-                    self.curr_order = self.go_short(prc = True, amount = self.curr_amount,
-                                order_type = "LIMIT", price = upper )
-                return #dont run algorithm until order fills  
-                    
-            else:#if PARTIALLY_FILLED keep waiting or NEW, put a limit of periods to wait the order to fill...    
-                self.wait+=1
-                periods_to_wait = 6 
-                if self.wait <= periods_to_wait:
-                    return #dont run algorithm until order fills
-                #wait didnt help order to suceed. Delete it and run algorithm...
-                self.cancel_all_open_orders()
-                self.curr_order = None
+            self.curr_order = None
                 
-                
+        self.pos = 0        
         ##### MAIN ALGORITHM #####
-        self.pred_lvl = 0
-        self.try_neutral = False
-        self.try_long = False
-        self.try_short = False
-        self.wait = 0
         for strategy in self.strategies:
             strategy.calculate_for_last_row()
-            #actual level (0 or max touched)
-            self.pred_lvl += strategy.strategy(-1)
+            self.pos += strategy.strategy(-1)
             
-        self.predicted_pos = np.sign(self.pred_lvl)    
-        #is neutral or suddently changes betweeen long and short
-        if self.curr_lvl != 0 and (self.predicted_pos == 0 or np.sign(self.pred_lvl) != np.sign(self.curr_lvl)):
-            if abs(self.get_current_invested_amount()) > 1e-16: #open positions
-                center = self.strategies[0].get_param("sma", -1)
-                self.curr_order = self.go_neutral(prc = 100, order_type = "LIMIT", price = center)
-                self.try_neutral = True
-            else: #maybe all orders were liquidated, already neutral...
-                self.change_leverage(self.initial_lev)
-                self.curr_lvl = 0
-                self.curr_amount = self.initial_amount
-                return
-        elif abs(self.pred_lvl) > abs(self.curr_lvl):
-            if self.predicted_pos == 1:
-                lower = self.strategies[abs(self.pred_lvl)-1].get_param("lower", -1)
-                self.curr_order = self.go_long(prc = True, amount = self.curr_amount,
-                                order_type = "LIMIT", price = lower )
-                self.try_long = True
-            else:
-                upper = self.strategies[abs(self.pred_lvl)-1].get_param("upper", -1)
-                self.curr_order = self.go_short(prc = True, amount = self.curr_amount,
-                                order_type = "LIMIT", price = upper )
-                self.try_short = True
+        self.predicted_pos = np.sign(self.pos)   
+        
+        if self.predicted_pos == 1 and self.get_position() in [0, -1]:
+            self.curr_order = self.go_long(
+                prc = True,
+                amount = 25,                
+                order_type = "LIMIT", price = self.data["Close"][-1],
+                go_neutral_first = True
+            )
+        if self.predicted_pos == 1 and self.get_position() in [0, -1]:
+            self.curr_order = self.go_short(
+                prc = True,
+                amount = 25,                
+                order_type = "LIMIT", price = self.data["Close"][-1],
+                go_neutral_first = True
+            )
         
             
     def go_long(self, prc = True, amount = None, go_neutral_first = False, 
                 order_type = "MARKET", price = None, reduceOnly = False, 
-                take_profit = False, stopPrice = None):
+                take_profit = False):
         if go_neutral_first:
             self.go_neutral() #if some position, go neutral first
         if prc: 
@@ -293,16 +242,14 @@ class FuturesTrader():
         elif order_type == "LIMIT":
             quantity = amount/price
         if quantity < self.min_units_to_trade: quantity = self.min_units_to_trade
-        order_id = self.create_order(side = "BUY", quantity = quantity, order_type = order_type, price = price)
-        
-        if take_profit:
-            self.create_order(side = "SELL", quantity = quantity, order_type = "TAKE_PROFIT", 
-                              price = price, stopPrice = stopPrice) 
+        order_id = self.create_order(side = "BUY", quantity = quantity, order_type = order_type, price = price,
+                                    reduceOnly=reduceOnly)
+        self.go_stop_market()    
         return order_id
         
     def go_short(self, prc = True, amount = None, go_neutral_first = False,
                 order_type = "MARKET", price = None, reduceOnly = False, 
-                 take_profit = False, stopPrice = None):
+                 take_profit = False):
         if go_neutral_first:
             self.go_neutral() #if some position, go neutral first
         if prc: 
@@ -314,11 +261,8 @@ class FuturesTrader():
         if quantity < self.min_units_to_trade: quantity = self.min_units_to_trade
         order_id = self.create_order(side = "SELL", quantity = quantity, order_type = order_type, price = price,
                          reduceOnly=reduceOnly)
-        
-        if take_profit:
-            self.create_order(side = "SELL", quantity = quantity, order_type = "TAKE_PROFIT", 
-                              price = price, stopPrice = stopPrice)
-        return order_id
+        self.go_stop_market()
+        return order_id 
     
     def go_neutral(self, prc = 100, order_type = "MARKET", price = None):
         #prc between 0 and 100
@@ -334,14 +278,35 @@ class FuturesTrader():
         if self.get_position() == 1: #if long, sell all
             order_id = self.create_order(side = "SELL", quantity = quantity, reduceOnly = True,
                              order_type = order_type, price = price)
+            self.close_all_stop_market()
             return order_id
         elif self.get_position() == -1: #if short, buy all
             order_id = self.create_order(side = "BUY", quantity = quantity, reduceOnly = True,
                              order_type = order_type, price = price)
+            self.close_all_stop_market()
             return order_id
         return None
         
-         
+    def go_stop_market(self):
+        #check if there is an stop market and close it
+        self.close_all_stop_market()
+        #put stop market near liq price to prevent losing all money
+        quantity = self.get_current_invested_amount()
+        side = "SELL" if self.current_pos > 0 else "BUY"
+        liq_price = float(self.client.futures_position_information(symbol = "BTCUSDT")[0]["liquidationPrice"])
+        entry_price = float(self.client.futures_position_information(symbol = "BTCUSDT")[0]["entryPrice"])
+        stopPrice = round(liq_price + 0.01*(entry_price - liq_price),1)
+        self.client.futures_create_order(symbol = self.symbol_upper, side = side,
+                    type = "STOP_MARKET", stopPrice=stopPrice, quantity = quantity, reduceOnly = True)
+    
+    def close_all_stop_market(self):
+        #check if there is an stop market and close it
+        open_orders = pd.DataFrame(self.client.futures_get_open_orders())
+        if len(open_orders) == 0: return
+        orders = open_orders[open_orders["origType"]=="STOP_MARKET"]
+        for i in range(len(orders)):
+            order_id = orders.iloc[i]["orderId"]
+            self.cancel_open_order(order_id)
     
     def create_order(self, side = "BUY", quantity = 0, reduceOnly = False, 
                      order_type = "MARKET", price = None, stopPrice = None):
@@ -403,13 +368,15 @@ class FuturesTrader():
         self.leverage = new_leverage
         
         
+        
 if __name__ == '__main__':
     
-    api_key = "UhpwtIoi0R1yRgGVp1B7iWPsEgJ4ztyW3Be9CtgiPYnLQfFT3EYe5IxWnRlH3zUG"
-    secret_key = "AbvONonWsBcbUwNx6a3UGBGv6t5EF8gWfIHn3MZHzfCVjXQJhE2fVlPzR52Qitxi"
+    api_key = "6ce63f3406fd8ebbff01054a66c25fe3c851c45932088c8ca3131a7005188462"
+    secret_key = "aa3ea32929252467fa5ffeac5818c95beabfb5dba691ef445e7eaa31ea0d15f6"
     
-    trader = FuturesTrader(symbol="btcusd", testnet = False, verbose = False)
-    trader.start_trading(num_candles = 1000, interval = "5m", initial_lev = 2,
-                     initial_amount = 10, use_prc = True,
-                     devs = [1, 2, 4], periods = [12*24*1],
-                    min_std_size = 1, min_std_use_prc= True)
+    #api_key = "UhpwtIoi0R1yRgGVp1B7iWPsEgJ4ztyW3Be9CtgiPYnLQfFT3EYe5IxWnRlH3zUG"
+    #secret_key = "AbvONonWsBcbUwNx6a3UGBGv6t5EF8gWfIHn3MZHzfCVjXQJhE2fVlPzR52Qitxi"
+    
+    trader = FuturesTrader(symbol="btcusd", testnet = True, verbose = False)
+    trader.start_trading(num_candles = 300, interval = "1h", initial_lev = 5,
+                     initial_amount = 25, use_prc = True)

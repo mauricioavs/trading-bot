@@ -580,19 +580,8 @@ class OBV():
         return np.std(self.data[self.obv][-last:])
     
 class RNN():
-    def __init__(self, data, model, scaler, default_strategy = 1, weight = 1):
-        self.columns_to_use = ['Open', 'High', 'Low', 'Close', 'Volume', 'Quote Asset Volume',
-       'Number of Trades', 'Taker Buy Base Asset Volume',
-       'Taker Buy Quote Asset Volume', 'Close|SMA|5', 'Close|SMA|13',
-       'Close|EWMA|a5', 'Close|EWMA|a8', 'Close|SMA|10',
-       'Close|BBs|1.5|10|Lower', 'Close|BBs|1.5|10|Upper',
-       'Close|BBs|1.5|10|Distance', 'Close_MACD_12_26_9',
-       'Close_MACDh_12_26_9', 'Close_MACDs_12_26_9', 'Close_RSI_14',
-       'CDL_HAMMER', 'CDL_INVERTEDHAMMER', 'CDL_DOJI_10_0.1',
-       'CDL_DRAGONFLYDOJI', 'CDL_GRAVESTONEDOJI', 'Close_EBSW',
-       'Close_High_Low_ADX_14', 'Close_High_Low_DMP_14',
-       'Close_High_Low_DMN_14', 'Close_High_Low_Volume_KVO_34_55_13',
-       'Close_High_Low_Volume_KVOs_34_55_13']
+    def __init__(self, data, model, scaler, scaler_obj, default_strategy = 1, weight = 1):
+        self.columns_to_use = ['Close']
         self.data = data # Dataframe
         self.weight = weight #weight on the strategy (importance)
         self.default_strategy = default_strategy #strategy to use
@@ -600,7 +589,8 @@ class RNN():
         self.rnn = "rnn"
         # load the scaler and model
         self.sc = load(open(scaler, 'rb'))
-        self.model = keras.models.load_model(model)
+        self.sc_obj = load(open(scaler, 'rb'))
+        self.model = keras.models.load_model(model, compile=False)
         
     def calculate(self, force = False): #calculate for all dataframe
         if not self.rnn in self.data.columns or force:
@@ -614,26 +604,37 @@ class RNN():
                 X.append(inputs[i-timestamps:i])
             X = np.array(X)
             predicted_position =np.concatenate(([np.nan]*(timestamps-1), self.model.predict(X, verbose = 0).flatten()))
-            self.data[self.rnn] = predicted_position
+            self.data[self.rnn] = self.sc_obj.inverse_transform(predicted_position.reshape(-1,1))
         #DONT DROP NA BECAUSE OTHER INDICATORS NEED THAT ROWS!!!
     def calculate_for_last_row(self): #calculate just for last row
         timestamps = self.model.layers[0].input_shape[1]
         inputs = self.data[-timestamps:].copy()[self.columns_to_use]
         inputs = self.sc.transform(inputs)
         X = np.array( [inputs] )
-        predicted_position = self.model.predict(X, verbose = 0).flatten()
-        self.data.loc[self.data.index[-1], self.rnn] = predicted_position[0]
+        predicted_position = self.model.predict(X, verbose = 0)
+        self.data.loc[self.data.index[-1], self.rnn] = self.sc_obj.inverse_transform(predicted_position.reshape(-1,1))[0]
         
-    def strategy(self, row, num = -1, bound = 0.5):
+    def strategy(self, row, num = -1):
         if num == -1: num = self.default_strategy #use default strategy 
-        return self.strategy1(row, bound)   
+        return self.strategy1(row)   
         
-    def strategy1(self, row, bound):
+    def strategy1(self, row):
         '''Returns predicted position (1,0 or -1)'''
-        if self.data[self.rnn][row] > bound: 
-            self.last_position = 1
-        elif self.data[self.rnn][row] < -bound: 
+        if row == 0:
+            self.last_position = 0
+            return self.last_position, self.data[self.rnn][row]
+        current_price = self.data["Close"][row]
+        previous_prediction = self.data[self.rnn][row-1]
+        current_prediction = self.data[self.rnn][row]
+        diff = current_price - previous_prediction
+        real_prediction = current_prediction + diff
+        
+        if abs(current_price - real_prediction) > current_price * 0.01 and self.last_position == 0:
+            self.last_position = 0
+        elif real_prediction > current_price: 
             self.last_position = -1
+        elif real_prediction < current_price: 
+            self.last_position = 1
         else:
             self.last_position = 0
         return self.last_position, self.data[self.rnn][row]

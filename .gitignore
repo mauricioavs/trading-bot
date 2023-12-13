@@ -8,3 +8,4 @@ models/
 saved_models/
 *.pickle
 colab/
+data/
