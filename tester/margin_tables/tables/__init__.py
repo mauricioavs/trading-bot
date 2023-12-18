@@ -1,1 +1,1 @@
-from btcusdt import BTCUSDT_TABLE # noqa
+from .btcusdt import BTCUSDT_TABLE # noqa

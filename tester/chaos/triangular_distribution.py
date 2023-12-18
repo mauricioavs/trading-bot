@@ -1,16 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import List
-from difficulty import Difficulty
-from position import Position
-from order_type import OrderType
+from orders.difficulty import Difficulty
+from orders.position import Position
+from orders.order_type import OrderType
 
 
 class TriangularDistribution:
     """
     This class manages methods of triangular distribution.
 
-    This class is useful to simulate caos in order execution.
+    This class is useful to simulate chaos in order execution.
     """
 
     def generate_sample(
@@ -109,4 +109,4 @@ class TriangularDistribution:
         return execution_price
 
 
-CAOS = TriangularDistribution()
+CHAOS = TriangularDistribution()

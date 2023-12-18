@@ -20,4 +20,4 @@ class MinOrders():
             raise AttributeError("Pair does not exist: " + pair.upper())
 
 
-MINORDERS = MinOrders()
+MIN_ORDERS = MinOrders()

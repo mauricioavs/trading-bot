@@ -1,4 +1,4 @@
-from order_type import OrderType
+from orders.order_type import OrderType
 
 
 INVALID_ORDER_TYPE = (
