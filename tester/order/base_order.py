@@ -37,9 +37,9 @@ class BaseOrder(BaseModel):
 
     Opening Attributes:
     entry_price: The price where order executed
-    size_quote: Total bought of position quote currency sign*(margin*leverage).
+    size_quote: Total bought of position quote currency (margin*leverage).
                 This number doest not change due to market fluctuations,
-                use notional value instead.
+                use notional value instead. Always positive
     margin_quote: Amount spent from my balance
     opening_fee_quote: Quote spent on opening fee
     opened_at: datetime when order was opened
@@ -48,7 +48,7 @@ class BaseOrder(BaseModel):
     close_prices: The prices where order partially closed
     closed_size_quotes: List of partially closed quote until reaches size_quote
     closing_fee_quotes: Quotes spent on closing fees
-    PnLs: Profits and losses, this does not include fees (opening or closing)
+    PnLs: Quote profits and losses, this does not include fees (opening or closing)
     liquidation_price: Tells if position was liquidated and where
     closed_at: Stores the closing datetimes of order
 
@@ -84,6 +84,47 @@ class BaseOrder(BaseModel):
 
     min_base_open: float = None
 
+    @property
+    def open_size_quote(self) -> float:
+        """
+        Gets current open quote.
+        This function not include the quote change
+        due to market fluctuations.
+        Open quote is positive for LONG and negative for SHORT
+        """
+        return self.size_quote - sum(self.closed_size_quotes)
+    
+    @property
+    def open_margin_quote(self) -> float:
+        """
+        Gets current open margin quote.
+        This function not include the quote change
+        due to market fluctuations.
+        This number is always positive
+        """
+        return abs(open_size_quote)/leverage
+    
+    @property
+    def size_base(self) -> float:
+        """
+        Gets base bought on initial order
+        """
+        return self.size_quote / self.entry_price
+    
+    @property
+    def open_size_base(self) -> float:
+        """
+        Gets base still opened on order
+        """
+        return self.open_size_quote / self.entry_price
+    
+    @property
+    def open_quote_investment(self) -> float:
+        """
+        Gets quote invested to open position
+        """
+        return self.margin_quote + self.opening_fee_quote
+
 
     def __repr__(self):
         return self.position.name
@@ -106,6 +147,8 @@ class BaseOrder(BaseModel):
 
         Frequently, limit orders are cheaper.
         """
+        if not self.use_fee:
+            return 0.0
         match order_type:
             case OrderType.MARKET:
                 return self.fee_taker
@@ -127,42 +170,36 @@ class BaseOrder(BaseModel):
             case Position.SHORT:
                 return -1
 
-    def get_open_size_quote(self) -> float:
-        """
-        Gets current open quote.
-        This function not include the quote change
-        due to market fluctuations.
-        Open quote is positive for LONG and negative for SHORT
-        """
-        return self.size_quote - sum(self.closed_size_quotes)
-
     def get_notional_value(
         self,
         current_price: float,
-        quote: float = None
+        base: float
     ) -> float:
         """
         Gets current notional value of position:
         Not. Value = units in contract  * spot price
 
-        The variable quote is quote used to open position 
-        in entry price.
-
-        If quote is none, use the available open position.
-        IMPORTANT: Open quote is positive for LONG and
-                    negative for SHORT
+        The variable base is the current units
         """
-        if quote is None:
-            quote = self.get_open_size_quote()
-        profit_quote = self.get_direction_int * (current_price - self.entry_price)
-        quote_for_one_base = self.entry_price + profit_quote
-        base_bought = quote/self.entry_price
+        notional_value = base * current_price
 
-        notional_value = quote_for_one_base * base_bought
         return notional_value
+    
+    def get_PnL(
+        self,
+        current_price: float,
+        quote: float
+    ) -> float:
+        """
+        Gets quote PnL of certain quote bought on entry price.
+        This does not include fees.
+        """
+        PnL = (1/self.entry_price - 1/current_price)
+        PnL = PnL * quote * current_price * self.get_direction_int()
+        return PnL 
 
     def is_open(self):
-        if is_zero(self.get_open_size_quote()):
+        if is_zero(self.open_size_quote):
             return False
         return True
 

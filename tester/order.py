@@ -106,7 +106,6 @@ class Order(BaseOrder):
             return False
 
         self.size_quote = min_size_quote * times_min_quote
-        self.size_quote *= self.get_direction_int()
         self.margin_quote = min_margin_quote * times_min_quote
         self.opening_fee_quote = min_opening_fee_quote * times_min_quote
         return True
@@ -147,29 +146,97 @@ class Order(BaseOrder):
                 self.print_message(
                     "{} |  Selling {} quote for {}, leverage {}".format(
                         self.opened_at,
-                        round(abs(self.size_quote), 1),
+                        round(self.size_quote, 1),
                         round(self.entry_price, 1),
                         self.leverage
                     )
                 )
-        return {"valid": True, "margin": self.margin_quote}
+        return {"valid": True, "quote_spent": self.open_quote_investment}
 
     def get_close_fee_quote(
         self,
         quote_to_close: float,
+        close_price: float,
         order_type: OrderType
     ) -> float:
         """
         Gets fee of closing certain quote.
 
-        quote_to_close maximum abs value is notional value
+        quote_to_close maximum abs value is size_quote
         """
-        if not self.use_fee:
-            return 0
-
         fee_constant = self.get_fee_constant(order_type)
-        fee = abs(quote_to_close) * fee_constant
+        notional_value = self.get_notional_value(
+            current_price=close_price,
+            base=quote_to_close/self.entry_price
+        )
+        fee = notional_value * fee_constant
         return fee
+
+    def print_close_message(
+        self,
+        date: datetime,
+        close_price: float,
+        close_quote: float
+    ) -> None:
+        """
+        Prints the closing order message
+        """
+        match self.position:
+            case Position.SHORT:
+                self.print_message(
+                    "{} |  Buying (closing{}) {} quote for {}".format(
+                        date,
+                        " partially" if self.is_open() else "",
+                        round(close_quote, 1),
+                        round(close_price, 1)
+                    )
+                )
+            case Position.LONG:
+                self.print_message(
+                    "{} |  Selling (closing{}) quote {} for {}".format(
+                        date,
+                        " partially" if self.is_open() else "",
+                        round(close_quote, 1),
+                        round(close_price, 1)
+                    )
+                )
+
+    def update_close_attributes(
+        self,
+        date: datetime,
+        close_price: float,
+        order_type: OrderType,
+        size_quote_closed: float
+    ) -> None:
+        """
+        Updates closing attributes after closing
+        a position (or partially).
+
+        """
+        self.closed_at.append(date)
+        self.close_prices.append(close_price)
+        self.closing_order_types.append(order_type)
+        self.closing_fee_quotes.append(
+            self.get_close_fee_quote(
+                quote_to_close=size_quote_closed,
+                close_price=close_price,
+                order_type=order_type
+            )
+        )
+        self.PnLs.append(
+            self.get_PnL(
+                current_price=close_price,
+                quote=size_quote_closed
+            )
+        )
+        self.closed_size_quotes.append(
+            size_quote_closed
+        )
+        self.print_close_message(
+            date=date,
+            close_price=close_price,
+            close_quote=size_quote_closed
+        )
 
     def close_position(
         self,
@@ -183,6 +250,8 @@ class Order(BaseOrder):
     ) -> float:
         """
         Closes the position given a percentage of it.
+
+        Returns my invested money and PnL.
         """
         close_price = self.get_execution_price(
             low=low, high=high, close=close,
@@ -193,7 +262,10 @@ class Order(BaseOrder):
         #verificar que el close price no sea liquidacion porque quedaria a deber dinero
         # si son varias ordenes, no debe ser un multiplo de min units
         min_quote_close = self.min_units * close_price
-        notional_val_quote = self.get_notional_value(current_price=close_price)
+        notional_val_quote = self.get_notional_value(
+            current_price=close_price,
+            base=self.open_size_base
+        )
         desired_quote_close = notional_val_quote * prc/100
         times_min_quote = desired_quote_close//min_quote_close
         real_quote_close = min_quote_close * times_min_quote
@@ -203,69 +275,16 @@ class Order(BaseOrder):
         if is_zero(real_quote_close):
             real_quote_close = min_quote_close
 
-        elif abs(remaining_open_quote) + 1e-10 < abs(min_quote_close):
+        elif remaining_open_quote + 1e-10 < min_quote_close:
             real_quote_close = notional_val_quote
 
-        prc_closed = abs(real_quote_close/notional_val_quote)
+        prc_closed = real_quote_close/notional_val_quote
 
-        self.closed_at.append(date)
-        self.close_prices.append(close_price)
-        self.closing_order_types.append(order_type)
-        self.closed_size_quotes.append(self.size_quote * prc_closed)
-        self.closing_fee_quotes.append(
-            self.get_close_fee_quote(
-                quote_to_close=real_quote_close,
-                order_type=order_type
-            )
+        self.update_close_attributes(
+            date=date,
+            close_price=close_price,
+            order_type=order_type,
+            size_quote_closed=self.open_size_quote * prc_closed
         )
-
-        match self.position:
-            case Position.LONG:
-                self.print_message(
-                    "{} |  Buying (closing{}) {} quote for {}".format(
-                        date,
-                        " partially" if self.is_open() else "",
-                        round(real_quote_close, 1),
-                        round(close_price, 1)
-                    )
-                )
-            case Position.SHORT:
-                self.print_message(
-                    "{} |  Selling (closing{}) quote {} for {}".format(
-                        date,
-                        " partially" if self.is_open() else "",
-                        round(real_quote_close, 1),
-                        round(close_price, 1)
-                    )
-                )
-        return 
-
-
-
-        fraction = self.available * (prc / 100)
-        #if after closing with prc the remaining is less than min position, better close all now
-        if self.units *(self.available - fraction) < self.min_units:
-            prc = 100
-            fraction = self.available
-        #if closing is less than min units, close minimum units
-        elif self.units * fraction < self.min_units:
-            prc = (self.min_units / (self.units * self.available))*100
-            fraction = self.available * (prc / 100)
-        #close always a multiple of min units
-        else:
-            blocks_to_sell = round(self.blocks * fraction, 0)
-            fraction = blocks_to_sell / self.blocks
-            prc = fraction / self.available * 100 
-        self.closing_at.append( date )
-        self.closing_price.append( price )
-        self.closing_fee_as_amount.append( self.get_close_fee(price, as_amount = True, prc = prc, use_available = True) )
-        self.closing_fee_as_units.append( self.get_close_fee(price, as_amount = False, prc = prc, use_available = True) )
-        pos_value = self.get_position_value(price, prc = prc, use_available = True)
-        self.available = self.available - fraction #stores the position still opened
-        partially = " partially" if self.is_open() else ""
-        if self.position == -1 and self.verbose:
-            print("{} |  Buying (closing{}) {} for {}".format(date, partially, self.units*fraction, round(price, 6)))
-        elif self.verbose:
-            print("{} |  Selling (closing{}) {} for {}".format(date, partially, self.units*fraction, round(price, 6)))  
-        return pos_value
-
+        margin_quote_close = self.open_margin_quote * prc_closed
+        return margin_quote_close + self.PnLs[-1] - self.closing_fee_quotes[-1]
