@@ -8,7 +8,7 @@ from pydantic import BaseModel, model_validator
 from typing import List
 from orders.position import Position
 from orders.difficulty import Difficulty
-from helpers import is_zero
+from helpers import is_zero, cyan, yellow
 
 
 class BaseOrder(BaseModel):
@@ -22,7 +22,9 @@ class BaseOrder(BaseModel):
     Init Attributes:
     verbose: Print actions
     pair: Use some pair like BTCUSDT
-    expected_quote: Selected quote investment (includes fee)
+    expected_quote: Desired position quote investment
+                    expected_quote/leverage is the quote we
+                    spend (includes fee).
     expected_entry_price: Desired entry price for order
     position: Position enum, long or short
     leverage: Leverage to use, limited depending on pair
@@ -147,6 +149,13 @@ class BaseOrder(BaseModel):
         return True
 
     @property
+    def is_closed(self):
+        """
+        Tells if order is closed
+        """
+        return not self.is_open
+
+    @property
     def direction_int(
         self,
     ) -> int:
@@ -167,6 +176,14 @@ class BaseOrder(BaseModel):
         String representation of object.
         """
         return self.position.name
+
+    def size_to_margin(self, quantity: float) -> float:
+        """
+        Given a quantity, returns the user invested part.
+
+        Basically, it just divides the quantity by leverage.
+        """
+        return quantity/self.leverage
 
     def get_fee_constant(
         self,
@@ -217,7 +234,7 @@ class BaseOrder(BaseModel):
         """
         Tells if position should be liquidated given a price
         """
-        liquidation_price = self.get_liquidation_price
+        liquidation_price = self.liquidation_price
         match self.position:
             case Position.LONG:
                 if price <= liquidation_price:
@@ -233,3 +250,11 @@ class BaseOrder(BaseModel):
         """
         if self.verbose:
             print(message)
+
+    def print_already_closed(self) -> None:
+        match self.liquidated:
+            case True:
+                msg = cyan("liquidated")
+            case False:
+                msg = yellow("closed")
+        self.print_message(f"Order already {msg}")

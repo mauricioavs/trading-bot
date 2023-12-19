@@ -4,7 +4,13 @@ from orders.order_type import OrderType
 from chaos.triangular_distribution import CHAOS
 from orders.min_orders import MIN_ORDERS
 from margin_tables import MARGIN_TABLES
-from helpers import is_zero
+from helpers import (
+    is_zero,
+    red,
+    green,
+    cyan,
+    yellow
+)
 from orders.position import Position
 
 
@@ -88,21 +94,25 @@ class Order(BaseOrder):
         Returns if at least minimum base coin could be bought.
 
         Example:
-        Expected quote: 1000
+        (Expected quote: 3000
+        leverage: 3
+        ->
+        Expected margin quote: 1000)
         min_margin_quote: 100
         min_fee_quote: 10
 
         The maximum we can spend is 9 times the minimum, i.e.,
-        990 quote
+        990 quote.
         """
         min_size_quote = self.min_base_open * self.entry_price
-        min_margin_quote = min_size_quote / self.leverage
+        min_margin_quote = self.size_to_margin(min_size_quote)
 
-        min_opening_fee_quote = self.use_fee * min_size_quote
-        min_opening_fee_quote *= self.get_fee_constant(self.order_type)
+        min_opening_fee_quote = min_size_quote * self.get_fee_constant(
+            self.order_type
+        )
 
         min_quote = min_margin_quote + min_opening_fee_quote
-        expected_margin_quote = self.expected_quote/self.leverage
+        expected_margin_quote = self.size_to_margin(self.expected_quote)
         times_min_quote = expected_margin_quote // min_quote
         if is_zero(times_min_quote):
             return False
@@ -111,6 +121,25 @@ class Order(BaseOrder):
         self.margin_quote = min_margin_quote * times_min_quote
         self.opening_fee_quote = min_opening_fee_quote * times_min_quote
         return True
+
+    def print_open_message(self) -> None:
+        """
+        Prints opening message position
+        """
+        match self.position:
+            case Position.LONG:
+                action = green("Buying")
+            case Position.SHORT:
+                action = red("Selling")
+        self.print_message(
+            "{} |  {} {} quote for {}, leverage {}".format(
+                self.opened_at,
+                action,
+                round(self.size_quote, 1),
+                round(self.entry_price, 1),
+                self.leverage
+            )
+        )
 
     def open_position(
         self,
@@ -134,25 +163,7 @@ class Order(BaseOrder):
             self.print_message("Insufficient Margin to buy units")
             return {"valid": False, "margin": 0}
         self.calculate_liquidation_price()
-        match self.position:
-            case Position.LONG:
-                self.print_message(
-                    "{} |  Buying {} quote for {}, leverage {}".format(
-                        self.opened_at,
-                        round(self.size_quote, 1),
-                        round(self.entry_price, 1),
-                        self.leverage
-                    )
-                )
-            case Position.SHORT:
-                self.print_message(
-                    "{} |  Selling {} quote for {}, leverage {}".format(
-                        self.opened_at,
-                        round(self.size_quote, 1),
-                        round(self.entry_price, 1),
-                        self.leverage
-                    )
-                )
+        self.print_open_message()
         return {"valid": True, "quote_spent": self.open_quote_investment}
 
     def get_close_fee_quote(
@@ -186,25 +197,21 @@ class Order(BaseOrder):
         """
         match self.position:
             case Position.SHORT:
-                self.print_message(
-                    "{} |  Buying ({}{}) {} quote for {}".format(
-                        date,
-                        "closing" if not liquidated else "liquidating",
-                        " partially" if self.is_open else "",
-                        round(close_quote, 1),
-                        round(close_price, 1)
-                    )
-                )
+                action = "Buying"
             case Position.LONG:
-                self.print_message(
-                    "{} |  Selling ({}{}) quote {} for {}".format(
-                        date,
-                        "closing" if not liquidated else "liquidating",
-                        " partially" if self.is_open else "",
-                        round(close_quote, 1),
-                        round(close_price, 1)
-                    )
-                )
+                action = "Selling"
+
+        self.print_message(
+            "{} |  {} ({}{}) quote {} for {}".format(
+                date,
+                action,
+                cyan("liquidating") if liquidated
+                else yellow("closing"),
+                " partially" if self.is_open else "",
+                round(close_quote, 1),
+                round(close_price, 1)
+            )
+        )
 
     def update_close_attributes(
         self,
@@ -218,6 +225,7 @@ class Order(BaseOrder):
         Updates closing attributes after closing
         a position (or partially).
         """
+        margin_quote_closed = self.size_to_margin(size_quote_closed)
         self.closed_at.append(date)
         self.close_prices.append(close_price)
         self.closing_order_types.append(order_type)
@@ -226,13 +234,13 @@ class Order(BaseOrder):
                 quote_to_close=size_quote_closed,
                 close_price=close_price,
                 order_type=order_type
-            )
+            ) if not liquidated else 0
         )
         self.PnLs.append(
             self.get_PnL(
                 current_price=close_price,
                 quote=size_quote_closed
-            ) if not liquidated else size_quote_closed
+            ) if not liquidated else -margin_quote_closed
         )
         self.closed_size_quotes.append(
             size_quote_closed
@@ -265,6 +273,9 @@ class Order(BaseOrder):
 
         Returns my invested money and PnL.
         """
+        if self.is_closed:
+            self.print_already_closed()
+            return
         # si hay varias ordenes, entonces deberia pasar el close price?
         close_price = self.get_execution_price(
             low=low, high=high, close=close,
@@ -281,7 +292,7 @@ class Order(BaseOrder):
         if prc:
             prc_closed = notional_quote_close/100
             notional_quote_close = notional_val_quote * prc_closed
-        times_min_quote = notional_quote_close//min_quote_close
+        times_min_quote = notional_quote_close//(min_quote_close-1e-12)
         notional_quote_close = min_quote_close * times_min_quote
 
         remaining_open_quote = notional_val_quote - notional_quote_close
@@ -298,14 +309,13 @@ class Order(BaseOrder):
             notional_quote_close = notional_val_quote
 
         prc_closed = notional_quote_close/notional_val_quote
-
+        margin_quote_close = self.open_margin_quote * prc_closed
         self.update_close_attributes(
             date=date,
             close_price=close_price,
             order_type=order_type,
             size_quote_closed=self.open_size_quote * prc_closed
         )
-        margin_quote_close = self.open_margin_quote * prc_closed
         return margin_quote_close + self.PnLs[-1] - self.closing_fee_quotes[-1]
 
     def calculate_liquidation_price(self):
@@ -328,21 +338,25 @@ class Order(BaseOrder):
                     base=self.open_size_quote/self.entry_price
                 )
             )
-            print("MM: " + str(maintenance_margin))
-            liquidation_price = self.entry_price + direction * (maintenance_margin - balance)/base_bought
+            number = direction * (maintenance_margin - balance)/base_bought
+            liquidation_price = self.entry_price + number
         self.liquidation_price = liquidation_price
 
     def liquidate_position(
         self,
-        date: datetime
+        date: datetime,
+        liquidation_price: float
     ) -> None:
         """
         Liquidates position given a close price
         """
+        if self.is_closed:
+            self.print_already_closed()
+            return
         self.liquidated = True
         self.update_close_attributes(
             date=date,
-            close_price=self.liquidation_price,
+            close_price=liquidation_price,
             order_type=OrderType.MARKET,
             size_quote_closed=self.open_size_quote,
             liquidated=True
