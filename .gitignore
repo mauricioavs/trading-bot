@@ -11,3 +11,5 @@ colab/
 data/
 models_work/
 .vscode/
+tester/data/*
+tester/.env

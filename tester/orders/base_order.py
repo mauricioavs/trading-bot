@@ -1,7 +1,7 @@
 from datetime import datetime
 from margin_tables import MARGIN_TABLES
 from orders.order_type import OrderType
-from orders.error_messages import (
+from helpers.error_messages import (
     INVALID_LEVERAGE
 )
 from pydantic import BaseModel, model_validator
@@ -13,7 +13,8 @@ from helpers import is_zero, cyan, yellow
 
 class BaseOrder(BaseModel):
     """
-    This class manages order validations.
+    This class manages order validations, properties and
+    base methods of order class.
 
     Note: In BTCUSDT and other pairs,
     BTC -> Base currency (first currency)
@@ -93,9 +94,11 @@ class BaseOrder(BaseModel):
             self.pair, self.expected_quote
         )
         if self.leverage < 1 or self.leverage > max_leverage:
-            INVALID_LEVERAGE.format(
-                leverage=str(self.leverage),
-                max_leverage=str(max_leverage)
+            raise ValueError(
+                INVALID_LEVERAGE.format(
+                    leverage=str(self.leverage),
+                    max_leverage=str(max_leverage)
+                )
             )
 
     @property
