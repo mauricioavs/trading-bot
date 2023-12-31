@@ -9,7 +9,12 @@ from helpers import (
     red,
     green,
     cyan,
-    yellow
+    yellow,
+)
+from helpers.error_messages import (
+    NOT_PROVIDED_CLOSE_PRICE,
+    NOT_PROVIDED_CANDLE,
+    FLUCTUATION_ERROR
 )
 from orders.position import Position
 
@@ -53,6 +58,8 @@ class Order(BaseOrder):
         Opening LONG: Best execution is low price
         Closing LONG: Best execution is high price
         """
+        if not (low or high or close):
+            raise ValueError(NOT_PROVIDED_CANDLE)
         if opening_order:
             execution_price = CHAOS.get_execution_price(
                 expected_price=expected_price,
@@ -82,6 +89,40 @@ class Order(BaseOrder):
 
         return execution_price
 
+    def get_min_quote_invest(
+        self,
+        execution_quote: float,
+        fluctuation: float = 0.0
+    ) -> float:
+        """
+        Gets min investment of a certain quote
+        using a max fluctuation of a certain
+        percentage.
+
+        0 < fluctuation < 1
+
+        Fluctuation is necessary due to difference
+        of real with expected execution price.
+        """
+        if fluctuation < 0 or fluctuation > 1:
+            raise ValueError(FLUCTUATION_ERROR)
+        min_size_quote = self.min_base_open * execution_quote * (
+            1 + fluctuation
+        )
+        min_margin_quote = self.size_to_margin(min_size_quote)
+
+        min_opening_fee_quote = min_size_quote * self.get_fee_constant(
+            self.order_type
+        ) * (1 + fluctuation)
+        min_quote = min_margin_quote + min_opening_fee_quote
+
+        return {
+            "min_size_quote": min_size_quote,
+            "min_margin_quote": min_margin_quote,
+            "min_opening_fee_quote": min_opening_fee_quote,
+            "min_quote": min_quote
+        }
+
     def get_spent_quote(self) -> bool:
         """
         This function calculates the spent quote using
@@ -104,22 +145,17 @@ class Order(BaseOrder):
         The maximum we can spend is 9 times the minimum, i.e.,
         990 quote.
         """
-        min_size_quote = self.min_base_open * self.entry_price
-        min_margin_quote = self.size_to_margin(min_size_quote)
-
-        min_opening_fee_quote = min_size_quote * self.get_fee_constant(
-            self.order_type
+        inv = self.get_min_quote_invest(
+            execution_quote=self.entry_price
         )
-
-        min_quote = min_margin_quote + min_opening_fee_quote
         expected_margin_quote = self.size_to_margin(self.expected_quote)
-        times_min_quote = expected_margin_quote // min_quote
+        times_min_quote = expected_margin_quote // (inv["min_quote"]-1e-12)
         if is_zero(times_min_quote):
             return False
 
-        self.size_quote = min_size_quote * times_min_quote
-        self.margin_quote = min_margin_quote * times_min_quote
-        self.opening_fee_quote = min_opening_fee_quote * times_min_quote
+        self.size_quote = inv["min_size_quote"] * times_min_quote
+        self.margin_quote = inv["min_margin_quote"] * times_min_quote
+        self.opening_fee_quote = inv["min_opening_fee_quote"] * times_min_quote
         return True
 
     def print_open_message(self) -> None:
@@ -144,20 +180,27 @@ class Order(BaseOrder):
     def open_position(
         self,
         date: datetime,
-        low: float,
-        high: float,
-        close: float
+        low: float = None,
+        high: float = None,
+        close: float = None,
+        entry_price: float = None
     ) -> bool:
         """
-        Executes position at a certain price
+        Executes position at a certain price.
+
+        Please give an entry price or
+        candle info to calculate one.
         """
         self.opened_at = date
-        self.entry_price = self.get_execution_price(
-            low=low, high=high, close=close,
-            expected_price=self.expected_entry_price,
-            order_type=self.order_type,
-            opening_order=True
-        )
+        if entry_price:
+            self.entry_price = entry_price
+        else:
+            self.entry_price = self.get_execution_price(
+                low=low, high=high, close=close,
+                expected_price=self.expected_entry_price,
+                order_type=self.order_type,
+                opening_order=True
+            )
         valid = self.get_spent_quote()
         if not valid:
             self.print_message("Insufficient Margin to buy units")
@@ -219,7 +262,8 @@ class Order(BaseOrder):
         close_price: float,
         order_type: OrderType,
         size_quote_closed: float,
-        liquidated: bool = False
+        print_message: bool,
+        liquidated: bool = False,
     ) -> None:
         """
         Updates closing attributes after closing
@@ -245,23 +289,52 @@ class Order(BaseOrder):
         self.closed_size_quotes.append(
             size_quote_closed
         )
-        self.print_close_message(
-            date=date,
-            close_price=close_price,
-            close_quote=size_quote_closed,
-            liquidated=liquidated
-        )
+        if print_message:
+            self.print_close_message(
+                date=date,
+                close_price=close_price,
+                close_quote=size_quote_closed,
+                liquidated=liquidated
+            )
+
+    def multiple_of_min_base(
+        self,
+        close_price: float,
+        notional_quote_close: float,
+        notional_val_quote: float
+    ) -> float:
+        """
+        Closes a multiple of minimum base.
+
+        returns the notional quote to close.
+        """
+        min_quote_close = self.min_base_open * close_price
+        times_min_quote = notional_quote_close//(min_quote_close-1e-12)
+        notional_quote_close = min_quote_close * times_min_quote
+
+        remaining_open_quote = notional_val_quote - notional_quote_close
+        if remaining_open_quote + 1e-10 < min_quote_close:
+            notional_quote_close = notional_val_quote
+
+        if is_zero(notional_quote_close):
+            notional_quote_close = min_quote_close
+
+        return notional_quote_close
 
     def close_position(
         self,
         date: datetime,
-        low: float,
-        high: float,
-        close: float,
-        expected_close_price: float,
         order_type: OrderType,
         notional_quote_close: float,
-        prc: bool
+        prc: bool,
+        expected_close_price: float = None,
+        close_price: float = None,
+        multiple_of_min_base: bool = False,
+        check_liquidation: bool = False,
+        low: float = None,
+        high: float = None,
+        close: float = None,
+        print_message: bool = True
     ) -> float:
         """
         Closes the position given a percentage or
@@ -271,49 +344,51 @@ class Order(BaseOrder):
         to notional value you want to close or percentage
         if prc is True.
 
+        If close_price is not provided, one is calculated using
+        expected_close_price
+
         Returns my invested money and PnL.
         """
         if self.is_closed:
             self.print_already_closed()
             return
-        # si hay varias ordenes, entonces deberia pasar el close price?
-        close_price = self.get_execution_price(
-            low=low, high=high, close=close,
-            expected_price=expected_close_price,
-            order_type=order_type,
-            opening_order=False
-        )
-        # si son varias ordenes, no debe ser un multiplo de min units
-        min_quote_close = self.min_base_open * close_price
+
+        if close_price is None:
+            if not (expected_close_price):
+                raise ValueError(NOT_PROVIDED_CLOSE_PRICE)
+
+            close_price = self.get_execution_price(
+                low=low, high=high, close=close,
+                expected_price=expected_close_price,
+                order_type=order_type,
+                opening_order=False
+            )
+
+        if check_liquidation and self.should_liquidate(close_price):
+            self.liquidate_position(date=date)
+            return 0
+
         notional_val_quote = self.get_notional_value(
             current_price=close_price,
             base=self.open_size_base
         )
+
         if prc:
             prc_closed = notional_quote_close/100
             notional_quote_close = notional_val_quote * prc_closed
-        times_min_quote = notional_quote_close//(min_quote_close-1e-12)
-        notional_quote_close = min_quote_close * times_min_quote
 
-        remaining_open_quote = notional_val_quote - notional_quote_close
-
-        if self.should_liquidate(close_price):
-            self.liquidate_position(date=date)
-            return 0
-
-        if is_zero(notional_quote_close):
-            notional_quote_close = min_quote_close
-
-        # quitar en caso de que las pueda cerrar parcialmente
-        elif remaining_open_quote + 1e-10 < min_quote_close:
-            notional_quote_close = notional_val_quote
+        if multiple_of_min_base:
+            notional_quote_close = self.multiple_of_min_base(
+                close_price=close_price,
+                notional_quote_close=notional_quote_close,
+                notional_val_quote=notional_val_quote
+            )
 
         prc_closed = notional_quote_close/notional_val_quote
         margin_quote_close = self.open_margin_quote * prc_closed
         self.update_close_attributes(
-            date=date,
-            close_price=close_price,
-            order_type=order_type,
+            date=date, close_price=close_price,
+            order_type=order_type, print_message=print_message,
             size_quote_closed=self.open_size_quote * prc_closed
         )
         return margin_quote_close + self.PnLs[-1] - self.closing_fee_quotes[-1]

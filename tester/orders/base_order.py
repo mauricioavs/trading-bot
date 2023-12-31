@@ -39,7 +39,7 @@ class BaseOrder(BaseModel):
     Opening Attributes:
     entry_price: The price where order executed
     size_quote: Total bought of position quote currency (margin*leverage).
-                This number doest not change due to market fluctuations,
+                This number does not change due to market fluctuations,
                 use notional value instead. Always positive
     margin_quote: Amount spent from my balance
     opening_fee_quote: Quote spent on opening fee
@@ -65,8 +65,8 @@ class BaseOrder(BaseModel):
     position: Position
     leverage: int = 1
     use_fee: bool = True
-    fee_maker: float = 0.002
-    fee_taker: float = 0.004
+    fee_maker: float = 0.0002
+    fee_taker: float = 0.0004
     order_type: OrderType = OrderType.MARKET
     difficulty: Difficulty = Difficulty.MEDIUM
     created_at: datetime = datetime.now()

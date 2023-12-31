@@ -69,28 +69,30 @@ class TriangularDistribution:
 
         Worst executions of limit orders can't be worse than
         expected entry price.
+
+        Executions are focused in opening position.
         """
         match order_type:
             case OrderType.MARKET:
                 match position:
                     case Position.LONG:
-                        best_execution = high
-                        worst_execution = low
-                    case Position.SHORT:
-                        best_execution = low
                         worst_execution = high
+                        best_execution = low
+                    case Position.SHORT:
+                        worst_execution = low
+                        best_execution = high
 
             case OrderType.LIMIT:
                 match position:
                     case Position.LONG:
-                        best_execution = high
-                        worst_execution = max(low, expected_price)
-                        close = max(close, worst_execution)
-
-                    case Position.SHORT:
                         best_execution = low
                         worst_execution = min(high, expected_price)
                         close = min(close, worst_execution)
+
+                    case Position.SHORT:
+                        best_execution = high
+                        worst_execution = max(low, expected_price)
+                        close = max(close, worst_execution)
 
         match difficulty:
             case difficulty.LOW:
