@@ -14,7 +14,8 @@ from helpers import (
 from helpers.error_messages import (
     NOT_PROVIDED_CLOSE_PRICE,
     NOT_PROVIDED_CANDLE,
-    FLUCTUATION_ERROR
+    FLUCTUATION_ERROR,
+    INSUFICCIENT_MARGIN
 )
 from orders.position import Position
 
@@ -93,7 +94,7 @@ class Order(BaseOrder):
         self,
         execution_quote: float,
         fluctuation: float = 0.0
-    ) -> float:
+    ) -> dict:
         """
         Gets min investment of a certain quote
         using a max fluctuation of a certain
@@ -168,7 +169,7 @@ class Order(BaseOrder):
             case Position.SHORT:
                 action = red("Selling")
         self.print_message(
-            "{} |  {} {} quote for {}, leverage {}".format(
+            "{} | {} {} quote for {}, leverage {}".format(
                 self.opened_at,
                 action,
                 round(self.size_quote, 1),
@@ -183,7 +184,8 @@ class Order(BaseOrder):
         low: float = None,
         high: float = None,
         close: float = None,
-        entry_price: float = None
+        entry_price: float = None,
+        fail_silent: bool = False
     ) -> bool:
         """
         Executes position at a certain price.
@@ -203,7 +205,8 @@ class Order(BaseOrder):
             )
         valid = self.get_spent_quote()
         if not valid:
-            self.print_message("Insufficient Margin to buy units")
+            if not fail_silent:
+                self.print_message(INSUFICCIENT_MARGIN)
             return {"valid": False, "margin": 0}
         self.calculate_liquidation_price()
         self.print_open_message()
@@ -245,7 +248,7 @@ class Order(BaseOrder):
                 action = "Selling"
 
         self.print_message(
-            "{} |  {} ({}{}) quote {} for {}".format(
+            "{} |  {} ({}{}) {} quote for {}".format(
                 date,
                 action,
                 cyan("liquidating") if liquidated
@@ -420,7 +423,8 @@ class Order(BaseOrder):
     def liquidate_position(
         self,
         date: datetime,
-        liquidation_price: float
+        liquidation_price: float,
+        print_message: bool
     ) -> None:
         """
         Liquidates position given a close price
@@ -434,5 +438,6 @@ class Order(BaseOrder):
             close_price=liquidation_price,
             order_type=OrderType.MARKET,
             size_quote_closed=self.open_size_quote,
-            liquidated=True
+            liquidated=True,
+            print_message=print_message
         )

@@ -34,6 +34,9 @@ class BaseOrder(BaseModel):
     fee_taker: Fee for market orders (expensive)
     order_type: An example is MARKET, see order_type.py
     difficulty: Difficulty of market, see difficulty.py
+    reduce_only: Tells if order is reduce_only. This is
+        stored for limit orders execution use 
+        in order_manager.
     created_at: datetime when order was created
 
     Opening Attributes:
@@ -69,6 +72,7 @@ class BaseOrder(BaseModel):
     fee_taker: float = 0.0004
     order_type: OrderType = OrderType.MARKET
     difficulty: Difficulty = Difficulty.MEDIUM
+    reduce_only: bool = False
     created_at: datetime = datetime.now()
 
     entry_price: float = None
