@@ -5,12 +5,12 @@ from orders import (
     OrderSystem,
     OrderType
 )
-from typing import List
+from typing import List, Union
 from datetime import datetime
 from orders.difficulty import Difficulty
 from helpers.error_messages import (
-    FLUCTUATION_ERROR,
-    MIN_INVEST_ERROR
+    MIN_INVEST_ERROR,
+    CANT_CHANGE_LEV
 )
 
 
@@ -24,6 +24,7 @@ class OrderManager(BaseModel):
     Init Attributes:
     verbose: Print actions
     pair: Use some pair like BTCUSDT
+    leverage: leverage used in orders
     difficulty: Difficulty of market, see difficulty.py
     use_fee: If false, fees are 0, otherwise use maker or taker
     fee_maker: Fee for limit orders (cheaper)
@@ -31,6 +32,8 @@ class OrderManager(BaseModel):
     system: Order behaviour:
         Netting: Orders are merged into one
         Hedging: Orders are separated
+    fluctuation: Stores max difference of price in percentage:
+                0 < fluctuation < 1 (validated in order)
 
     Other Attributes:
     open_orders: Stores current open positions
@@ -42,11 +45,13 @@ class OrderManager(BaseModel):
     """
     verbose: bool
     pair: str
+    leverage: int = 1
     difficulty: Difficulty = Difficulty.MEDIUM
     use_fee: bool = True
     fee_maker: float = 0.0002
     fee_taker: float = 0.0004
     system: OrderSystem = OrderSystem.NETTING
+    fluctuation: float = 0.05
 
     open_orders: List[Order] = []
     limit_orders: List[Order] = []
@@ -59,42 +64,63 @@ class OrderManager(BaseModel):
         Gets current position
         LONG, SHORT or NEUTRAL
         """
-        if len(self.open_orders) == 0:
+        if not self.open_orders:
             return Position.NEUTRAL
         match self.system:
             case OrderSystem.NETTING:
                 return self.open_orders[0].position
 
+    @property
+    def get_opposite_position(self) -> Position:
+        """
+        Gets reverse of current position:
+        NEUTRAL -> NEUTRAL
+        LONG -> SHORT
+        SHORT -> LONG
+        """
+        curr_pos = self.get_position
+        if curr_pos == Position.SHORT:
+            return Position.LONG
+        elif curr_pos == Position.LONG:
+            return Position.SHORT
+        return Position.NEUTRAL
+
+    def print_message(self, message: str) -> None:
+        """
+        Prints messages if verbose is True
+        """
+        if self.verbose:
+            print(message)
+
     def get_min_quote_invest(
         self,
         current_quote_val: float,
-        leverage: int,
         order_type: OrderType,
-        fluctuation: float
+        position: Position
     ) -> float:
         """
         Gets min investment of a certain quote
         using a max fluctuation of a certain
         percentage.
 
-        0 < fluctuation < 1
-
-        Fluctuation is necessary due to difference
-        of real with expected execution price.
+        If must close orders, then it's 0
+        because order will close minimum
+        amount automatically.
         """
-        if fluctuation < 0 or fluctuation > 1:
-            raise ValueError(FLUCTUATION_ERROR)
+        if self.must_close_open_positions(
+            requested_pos=position
+        ):
+            return 0
+
         order = self.create_order(
             quote=0,
             expected_execution_price=current_quote_val,
             position=Position.LONG,
-            leverage=leverage,
             order_type=order_type,
             date=datetime.now()
         )
         inv = order.get_min_quote_invest(
-            execution_quote=current_quote_val,
-            fluctuation=fluctuation
+            execution_quote=current_quote_val
         )
         return inv["min_quote"]
 
@@ -131,6 +157,18 @@ class OrderManager(BaseModel):
             )
         return not_val_quote
 
+    def get_limit_orders_quote(
+        self
+    ):
+        """
+        Sum all notional values of open orders in quote
+        currency.
+        """
+        quote = 0
+        for order in self.limit_orders:
+            quote += order.expected_quote
+        return quote
+
     def get_execution_price(
         self,
         low: float,
@@ -148,7 +186,6 @@ class OrderManager(BaseModel):
             quote=0,
             expected_execution_price=expected_price,
             position=position,
-            leverage=1,
             order_type=order_type,
             date=datetime.now()
         )
@@ -164,10 +201,15 @@ class OrderManager(BaseModel):
         date: datetime,
         order_type: OrderType,
         close_price: float,
-        quote: float
+        quote: float,
+        use_prc: bool = False
     ) -> dict:
         """
         closes the position of certain quote.
+
+        If use_prc is true, then:
+
+        0 < quote < 100
 
         Returns the closed quote (notional)
         and total return (includes investment, fees and pnl).
@@ -177,7 +219,8 @@ class OrderManager(BaseModel):
                 invested_not_quote = self.get_invested_not_val_quote(
                     price=close_price
                 )
-
+                if use_prc:
+                    quote = invested_not_quote * quote / 100
                 quote_to_close = self.open_orders[0].multiple_of_min_base(
                     close_price=close_price,
                     notional_quote_close=min(
@@ -187,6 +230,7 @@ class OrderManager(BaseModel):
                     notional_val_quote=invested_not_quote
                 )
                 prc_to_close = quote_to_close/invested_not_quote * 100
+
                 total_return = 0
                 for order in self.open_orders[:]:
                     total_return += order.close_position(
@@ -203,7 +247,7 @@ class OrderManager(BaseModel):
                         self.open_orders.remove(order)
                         self.closed_orders.append(order)
 
-                if len(self.open_orders) == 0:
+                if not self.open_orders:
                     self.netting_liquidation = None
                     print_order = self.closed_orders[-1]
                 else:
@@ -226,10 +270,10 @@ class OrderManager(BaseModel):
         quote: float,
         expected_execution_price: float,
         position: Position,
-        leverage: int,
         order_type: OrderType,
         date: datetime,
-        reduce_only: bool = False
+        use_prc_close: float,
+        reduce_only: bool = False,
     ) -> Order:
         """
         creates order object
@@ -237,17 +281,19 @@ class OrderManager(BaseModel):
         return Order(
             verbose=self.verbose,
             pair=self.pair,
-            expected_quote=quote,
-            expected_entry_price=expected_execution_price,
-            position=position,
-            leverage=leverage,
             use_fee=self.use_fee,
             fee_maker=self.fee_maker,
             fee_taker=self.fee_taker,
-            order_type=order_type,
             difficulty=self.difficulty,
+            fluctuation=self.fluctuation,
+            expected_quote=quote,
+            expected_entry_price=expected_execution_price,
+            position=position,
+            leverage=self.leverage,
+            order_type=order_type,
             created_at=date,
-            reduce_only=reduce_only
+            use_prc_close=use_prc_close,
+            reduce_only=reduce_only,
         )
 
     def add_to_limit_orders(
@@ -284,111 +330,126 @@ class OrderManager(BaseModel):
 
     def submit_order(
         self,
-        date: datetime,
+        creation_date: datetime,
         low: float,
         close: float,
         high: float,
         quote: float,
-        leverage: int,
         position: Position,
-        order_type: OrderType,
+        order_type: Union[OrderType, str],
         expected_exec_quote: float,
-        fluctuation: float,
-        reduce_only: bool = False
+        execution_date: datetime = None,
+        reduce_only: bool = False,
+        use_prc_close: bool = False,
+        force_limit: bool = False
     ) -> float:
         """
         Submits an order to system.
 
-        Fluctuation is the max difference  of price
-        when executing in percentage.
-
-        0 < fluctuation < 1
-
-        Returns the quote spent to open or
-        store order.
+        Returns the earnings or investment of order
+        (could be negative).
         """
-        # debo validar que tengo el dinero
-        # si estoy cerrando orden, no necesito tener el dinero
+        if isinstance(order_type, str):
+            order_type = OrderType(order_type.upper())
+        if use_prc_close:
+            reduce_only = True
+        if execution_date is None:
+            execution_date = creation_date
         min_quote_invest = self.get_min_quote_invest(
             current_quote_val=expected_exec_quote,
-            leverage=leverage,
             order_type=order_type,
-            fluctuation=fluctuation
+            position=position
         )
-        print("MIN_INVEST: ", min_quote_invest)
-
-        if quote < min_quote_invest:
-            raise MIN_INVEST_ERROR.format(min_quote_invest)
+        if quote + 1e-12 < min_quote_invest:
+            self.print_message(
+                MIN_INVEST_ERROR.replace(
+                    "{min_quote}", str(min_quote_invest)
+                )
+            )
+            return 0.0
 
         times_min_quote = quote // (min_quote_invest-1e-12)
         quote = min_quote_invest * times_min_quote
-        print("quote: ", quote)
 
         match order_type:
             case OrderType.MARKET:
                 returns = self.execute_order(
-                    date=date, low=low, high=high, close=close,
-                    quote=quote, leverage=leverage,
-                    position=position, order_type=order_type,
+                    creation_date=creation_date,
+                    execution_date=execution_date,
+                    low=low, high=high, close=close,
+                    quote=quote, order_type=order_type,
+                    position=position,
                     expected_execution_price=expected_exec_quote,
+                    use_prc_close=use_prc_close,
                     reduce_only=reduce_only
                 )
                 return returns
             case OrderType.LIMIT:
                 match position:
                     case Position.LONG:
-                        if expected_exec_quote <= close:
+                        if close <= expected_exec_quote or force_limit:
                             returns = self.execute_order(
-                                date=date, low=low, high=high, close=close,
-                                quote=quote, leverage=leverage,
-                                position=position, order_type=order_type,
+                                creation_date=creation_date,
+                                execution_date=execution_date,
+                                low=low, high=high, close=close,
+                                quote=quote, order_type=order_type,
+                                position=position,
                                 expected_execution_price=expected_exec_quote,
+                                use_prc_close=use_prc_close,
                                 reduce_only=reduce_only
                             )
                             return returns
                     case Position.SHORT:
-                        if expected_exec_quote >= close:
+                        if expected_exec_quote <= close or force_limit:
                             returns = self.execute_order(
-                                date=date, low=low, high=high, close=close,
-                                quote=quote, leverage=leverage,
-                                position=position, order_type=order_type,
+                                creation_date=creation_date,
+                                execution_date=execution_date,
+                                low=low, high=high, close=close,
+                                quote=quote, order_type=order_type,
+                                position=position,
                                 expected_execution_price=expected_exec_quote,
+                                use_prc_close=use_prc_close,
                                 reduce_only=reduce_only
                             )
                             return returns
-                    case _:
-                        order = self.create_order(
-                            quote=quote,
-                            expected_execution_price=expected_exec_quote,
-                            position=position,
-                            leverage=leverage,
-                            order_type=order_type,
-                            reduce_only=reduce_only,
-                            date=date
-                        )
-                        self.add_to_limit_orders(order)
-                        return -quote
+                order = self.create_order(
+                    quote=quote,
+                    expected_execution_price=expected_exec_quote,
+                    position=position,
+                    order_type=order_type,
+                    use_prc_close=use_prc_close,
+                    reduce_only=reduce_only,
+                    date=creation_date
+                )
+                self.add_to_limit_orders(order)
+                return -quote
 
     def execute_order(
         self,
-        date: datetime,
+        creation_date: datetime,
+        execution_date: datetime,
         low: float,
         high: float,
         close: float,
-        quote: float,
-        leverage: int,
         position: Position,
         order_type: OrderType,
         expected_execution_price: float,
-        reduce_only: bool
+        reduce_only: bool,
+        quote: float,
+        use_prc_close: bool
     ) -> float:
         """
         Executes order and returns the profits (including
         investment).
 
+        use_prc_close means that quote is in percentage
+        and reduce_only is obviously activated.
+
         NETTING:
         Checks first if some fraction or position must be closed.
         """
+        if use_prc_close:
+            reduce_only = True
         returns = 0
         execution_price = self.get_execution_price(
             low=low, high=high, close=close,
@@ -398,9 +459,9 @@ class OrderManager(BaseModel):
         if self.must_close_open_positions(requested_pos=position):
 
             closed = self.close_position(
-                date=date, quote=quote,
-                order_type=order_type,
-                close_price=execution_price
+                date=execution_date, quote=quote,
+                order_type=order_type, use_prc=use_prc_close,
+                close_price=execution_price,
             )
             if reduce_only:
                 return closed["total_return"]
@@ -415,13 +476,12 @@ class OrderManager(BaseModel):
             quote=quote,
             expected_execution_price=expected_execution_price,
             position=position,
-            leverage=leverage,
             order_type=order_type,
-            date=date
+            date=creation_date
         )
 
         response = order.open_position(
-            date=date,
+            date=execution_date,
             entry_price=execution_price,
             fail_silent=False
         )
@@ -468,9 +528,12 @@ class OrderManager(BaseModel):
         self,
         liquidation_price: float,
         date: datetime
-    ) -> None:
+    ) -> float:
         """
-        Liquidates all open orders.
+        Liquidates all open orders and closes
+        limit orders.
+
+        Returns money of limit orders
         """
         match self.system:
             case OrderSystem.HEDGING:
@@ -494,27 +557,34 @@ class OrderManager(BaseModel):
                 )
                 self.closed_orders.extend(self.open_orders)
                 self.open_orders = []
+                return self.remove_limit_orders()
 
     def check_liquidation(
         self,
         high: float,
         low: float,
         date: datetime
-    ):
+    ) -> float:
         """
         Checks and liquidates position.
 
         NETING:
         Checks for netting liquidation.
+
+        returns quote of canceled limit orders
         """
         if self.should_netting_liquidate(
             high=high,
             low=low
         ):
-            self.netting_liquidate_position(
-                liquidation_price=self.netting_liquidation,
-                date=date
-            )
+            match self.system:
+                case OrderSystem.NETTING:
+                    returns = self.netting_liquidate_position(
+                        liquidation_price=self.netting_liquidation,
+                        date=date
+                    )
+                    return returns
+        return 0
 
     def calculate_netting_liquidation(self) -> None:
         if self.system == OrderSystem.HEDGING:
@@ -559,8 +629,113 @@ class OrderManager(BaseModel):
 
         self.netting_liquidation = netting_liq
 
-    def check_limit_orders(self):
+    def remove_limit_order(self, order: Order) -> float:
+        """
+        Removes limit order not executed and returns the
+        invested money.
+        """
+        self.limit_orders.remove(order)
+        return order.expected_quote
+
+    def remove_limit_orders(self) -> float:
+        """
+        Removes limit orders not executed and returns the
+        invested money.
+        """
+        returns = 0
+        for order in self.limit_orders:
+            returns += order.expected_quote
+        self.limit_orders = []
+        return returns
+
+    def check_limit_orders(
+        self,
+        date: datetime,
+        low: float,
+        close: float,
+        high: float,
+    ) -> float:
         """
         Checks if limit orders should be executed.
+
+        Returns the not invested money.
         """
-        return
+        returns = 0
+        for order in self.limit_orders[:]:
+            if order.should_execute(
+                low=low,
+                high=high
+            ):
+                returns += self.submit_order(
+                    creation_date=order.created_at,
+                    execution_date=date,
+                    low=low,
+                    close=close,
+                    high=high,
+                    quote=order.expected_quote,
+                    position=order.position,
+                    order_type=order.order_type,
+                    expected_exec_quote=order.expected_entry_price,
+                    use_prc_close=order.use_prc_close,
+                    reduce_only=order.reduce_only,
+                    force_limit=True
+                )
+                returns += order.expected_quote
+                self.limit_orders.remove(order)
+        return returns
+
+    def get_invested_notional_value(
+        self,
+        quote_value: float
+    ) -> float:
+        """
+        NETTING:
+        Gets invested notional value. This does not include
+        limit orders not opened.
+        """
+        match self.system:
+            case OrderSystem.NETTING:
+                if not self.open_orders:
+                    return 0
+                invested = 0
+                for order in self.open_orders:
+                    invested += order.get_notional_value(
+                        current_price=quote_value,
+                        base=order.open_size_base
+                    )
+                return invested
+
+    def get_min_leverage(self):
+        """
+        Returns the min leverage of the orders,
+        that is the minimum leverage we can use
+        """
+        match self.system:
+            case OrderSystem.NETTING:
+                if not self.open_orders:
+                    return 1
+                return self.leverage
+
+    def change_leverage(
+        self,
+        new_lev: int
+    ) -> bool:
+        """
+        Changes leverage considering open positions.
+
+        Returns if change was successful.
+        """
+        min_lev = self.get_min_leverage()
+        match self.system:
+            case OrderSystem.NETTING:
+                if new_lev < min_lev:
+                    self.print_message(
+                        CANT_CHANGE_LEV.replace(
+                            "{new_lev}", str(new_lev)
+                        ).replace(
+                            "{current_lev}", str(self.leverage)
+                        )
+                    )
+                    return False
+                self.leverage = new_lev
+                return True

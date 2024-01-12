@@ -6,6 +6,20 @@ from pydantic import (
 from binance.client import Client
 import pandas as pd
 from config.settings import API_KEY, SECRET_KEY
+from orders import (
+    OrderManager,
+    OrderSystem,
+    Position,
+    OrderType
+)
+from orders.difficulty import Difficulty
+from datetime import datetime
+import numpy as np
+from wallet import Wallet
+from typing import Any
+from helpers import MAX_INVEST_ERROR
+from typing import Union, List
+import matplotlib.pyplot as plt
 
 
 class BinanceAPI(BaseModel):
@@ -17,40 +31,97 @@ class BinanceAPI(BaseModel):
     USDT -> Quote currency (second currency)
 
     Settings:
-    model_config: Allows Client object as attribute.
+    model_config: Allows custom objects as attributes
 
-    Attributes:
+    Init Attributes:
     verbose: Print actions
     pair: Use some pair like BTCUSDT
-    initial_balance: Initial balance quote. For example, in BTCUSDT,
-                    this indicates x USDT you have initially.
+    difficulty: Stores difficulty of simulation, see difficulty.py
     use_fee: If false, fees are 0, otherwise use maker or taker
     fee_maker: Fee for limit orders (cheaper)
     fee_taker: Fee for market orders (expensive)
-    client: Manages communication with Binance API. Used to load info.
-    data: Data to be used in simulator. Load it with load_data method.
+    system: Order behaviour:
+        Netting: Orders are merged into one
+        Hedging: Orders are separated
+    fluctuation: Stores max difference of price in percentage:
+                0 < fluctuation < 1 (validated in order)
+
+    Attributes:
+    client: Manages communication with Binance API. Used to load info
+    wallet: Stores quote balance
+    data: Data to be used in simulator. Load it with load_data method
+    order_manager: Stores communication with orders
+    position_history: Stores the position history
     """
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
     verbose: bool
     pair: str
-    # initial_balance: float
-    # use_fee: bool
-    # fee_maker: float
-    # fee_taker: float
+    difficulty: Difficulty
+    use_fee: bool
+    fee_maker: float
+    fee_taker: float
+    system: OrderSystem = OrderSystem.NETTING
+    fluctuation: float = 0.05
+
     client: Client = Client(
         api_key=API_KEY,
         api_secret=SECRET_KEY,
         tld="com",
         testnet=True
     )
+    wallet: Wallet = Wallet()
     data: pd.DataFrame = None
+    order_manager: OrderManager = None
+    position_history: List = []
 
     @field_validator("pair", mode="before")
     def validate_pair(cls, value) -> str:
         """
-        Validates pair is in uppercase letters
+        Returns fields in uppercase letters
         """
         return value.upper()
+
+    def get_value(
+        self,
+        bar: int,
+        column: str
+    ) -> Any:
+        """
+        Returns a certain value of a column with bar index
+        """
+        if column == "Date":
+            value = str(self.data.index[bar])
+        else:
+            value = round(self.data[column].iloc[bar], 5)
+        return value
+
+    def init_order_manager(self) -> None:
+        """
+        Inits order_manager to manage
+        order methods.
+        """
+        self.order_manager = OrderManager(
+            verbose=self.verbose,
+            pair=self.pair,
+            difficulty=self.difficulty,
+            use_fee=self.use_fee,
+            fee_maker=self.fee_maker,
+            fee_taker=self.fee_taker,
+            system=self.system,
+            fluctuation=self.fluctuation
+        )
+
+    def init_wallet(
+        self,
+        initial_quote: float
+    ) -> None:
+        """
+        Inits wallet balance
+        """
+        self.wallet.set_initial_balance(
+            quote=initial_quote
+        )
 
     def print_message(self, message: str) -> None:
         """
@@ -185,4 +256,428 @@ class BinanceAPI(BaseModel):
                 start_date_utc=start_date_utc,
                 end_date_utc=end_date_utc
             )
+        self.print_message("Data loaded.")
         return self.data
+
+    def get_nav(
+        self,
+        price: float
+    ):
+        """
+        Gets net asset value: Total current balance
+        considering open orders notional value in
+        certain price and limit orders not executed.
+        """
+        inv_quote = self.order_manager.get_invested_not_val_quote(
+            price=price
+        )
+        limit_quote = self.order_manager.get_limit_orders_quote()
+        return self.wallet.balance + inv_quote + limit_quote
+
+    def max_invest(
+        self,
+        expected_exec_quote: float,
+        position: Position
+    ) -> float:
+        """
+        Returns the max invest considering the closing of
+        positions
+        """
+        max_invest = self.wallet.balance
+        if self.order_manager.must_close_open_positions(
+            requested_pos=position
+        ):
+            max_invest += self.order_manager.get_invested_not_val_quote(
+                price=expected_exec_quote
+            ) * (1 + self.fluctuation)
+        return max_invest
+
+    def can_invest(
+        self,
+        quote: float,
+        expected_exec_quote: float,
+        position: Position
+    ) -> bool:
+        """
+        Tells if a quote could be spent considering
+        available in wallet and open positions.
+        """
+        max_invest = self.max_invest(
+            expected_exec_quote=expected_exec_quote,
+            position=position
+        )
+        if max_invest < quote:
+            self.print_message(MAX_INVEST_ERROR).format(
+                str(quote), str(max_invest)
+            )
+            return False
+
+        return True
+
+    def submit_order(
+        self,
+        creation_date: datetime,
+        low: float,
+        close: float,
+        high: float,
+        quote: float,
+        position: Position,
+        order_type: OrderType,
+        expected_exec_quote: float,
+        execution_date: datetime = None,
+        use_prc_close: bool = False,
+        reduce_only: bool = False
+    ) -> float:
+        """
+        Submits an order to system.
+
+        Returns the earnings or investment of order
+        (could be negative).
+        """
+        if self.can_invest(
+            quote=quote,
+            expected_exec_quote=expected_exec_quote,
+            position=position
+        ):
+            returns = self.order_manager.submit_order(
+                creation_date=creation_date,
+                low=low,
+                close=close,
+                high=high,
+                quote=quote,
+                position=position,
+                order_type=order_type,
+                expected_exec_quote=expected_exec_quote,
+                execution_date=execution_date,
+                use_prc_close=use_prc_close,
+                reduce_only=reduce_only
+            )
+            self.wallet.update_balance(quote=returns)
+            return
+        self.print_message(
+            self.wallet.cant_spend_msg(
+                quote=quote
+            )
+        )
+
+    def close_position(
+        self,
+        quote: float,
+        bar: int,
+        use_prc: bool = True,
+        order_type: Union[OrderType, str] = OrderType.MARKET
+    ) -> None:
+        """
+        Closes a percentage of position or an amount of it.
+        """
+        if self.order_manager.get_position == Position.NEUTRAL:
+            return
+
+        self.submit_order(
+            creation_date=self.get_value(bar=bar, column="Date"),
+            low=self.get_value(bar=bar, column="Low"),
+            close=self.get_value(bar=bar, column="Close"),
+            expected_exec_quote=self.get_value(bar=bar, column="Close"),
+            high=self.get_value(bar=bar, column="High"),
+            quote=quote,
+            position=self.order_manager.get_opposite_position,
+            order_type=order_type,
+            use_prc_close=use_prc,
+            reduce_only=True
+        )
+
+    def go_neutral(
+        self,
+        bar: int,
+        order_type: Union[OrderType, str] = OrderType.MARKET
+    ) -> None:
+        """
+        Closes all the opened positions
+        """
+        match self.system:
+            case OrderSystem.NETTING:
+                self.close_position(
+                    quote=100.0,
+                    bar=bar,
+                    use_prc=True,
+                    order_type=order_type
+                )
+
+    def go_long(
+        self,
+        bar: int,
+        quote: float,
+        expected_exec_quote: float = None,
+        wallet_prc: bool = False,
+        go_neutral_first: bool = False,
+        order_type: Union[OrderType, str] = OrderType.MARKET
+    ) -> None:
+        """
+        Submits a LONG position
+        """
+        if go_neutral_first:
+            self.go_neutral(bar)
+
+        if wallet_prc:
+            quote = self.wallet.balance * quote / 100
+
+        if expected_exec_quote is None:
+            expected_exec_quote = self.get_value(bar=bar, column="Close")
+
+        self.submit_order(
+            creation_date=self.get_value(bar=bar, column="Date"),
+            low=self.get_value(bar=bar, column="Low"),
+            close=self.get_value(bar=bar, column="Close"),
+            expected_exec_quote=expected_exec_quote,
+            high=self.get_value(bar=bar, column="High"),
+            quote=quote,
+            position=Position.LONG,
+            order_type=order_type,
+            use_prc_close=False,
+            reduce_only=False
+        )
+
+    def go_short(
+        self,
+        bar: int,
+        quote: float,
+        expected_exec_quote: float = None,
+        wallet_prc: bool = False,
+        go_neutral_first: bool = False,
+        order_type: Union[OrderType, str] = OrderType.MARKET
+    ) -> None:
+        """
+        Submits a LONG position
+        """
+        if go_neutral_first:
+            self.go_neutral(bar)
+
+        if wallet_prc:
+            quote = self.wallet.balance * quote / 100
+
+        if expected_exec_quote is None:
+            expected_exec_quote = self.get_value(bar=bar, column="Close")
+
+        self.submit_order(
+            creation_date=self.get_value(bar=bar, column="Date"),
+            low=self.get_value(bar=bar, column="Low"),
+            close=self.get_value(bar=bar, column="Close"),
+            expected_exec_quote=expected_exec_quote,
+            high=self.get_value(bar=bar, column="High"),
+            quote=quote,
+            position=Position.SHORT,
+            order_type=order_type,
+            use_prc_close=False,
+            reduce_only=False
+        )
+
+    def print_final_result(self):
+        profits = (self.wallet.balance - self.wallet.initial_balance)
+        perf = profits/(self.wallet.initial_balance * 100)
+        total_orders = 0
+        good_orders = 0
+        bad_orders = 0
+        good_orders_prc = 0
+        bad_orders_prc = 0
+        liquidated_orders = 0
+        paid_fee = 0
+        if self.order_manager.closed_orders:
+            total_orders = len(self.order_manager.closed_orders)
+            good_orders = sum(
+                order.realized_PnL > 0 for order
+                in self.order_manager.closed_orders
+            )
+            good_orders_prc = round(good_orders / total_orders * 100, 1)
+            bad_orders = total_orders - good_orders
+            bad_orders_prc = round(100-good_orders_prc, 1)
+            liquidated_orders = sum(
+                order.liquidated for order
+                in self.order_manager.closed_orders
+            )
+            paid_fee = sum(
+                order.realized_fee > 0 for order
+                in self.order_manager.closed_orders
+            )
+
+        if self.verbose:
+            self.print_message(75 * "-")
+            self.print_message("+++ CLOSING FINAL POSITION +++")
+            self.print_message("net performance (%) = {}".format(
+                    round(perf, 2)
+                )
+            )
+            self.print_message("number of positions opened = {}".format(
+                    total_orders
+                )
+            )
+            self.print_message("number of liquidated orders = {}".format(
+                    liquidated_orders
+                )
+            )
+            self.print_message("number of good orders = {} ({}%)".format(
+                    good_orders,
+                    good_orders_prc
+                )
+            )
+            self.print_message("number of bad orders = {} ({}%)".format(
+                    bad_orders,
+                    bad_orders_prc
+                )
+            )
+            self.print_message(
+                "Amount spent on fee = {} ({}% of initial balance)".format(
+                    paid_fee, round(
+                        paid_fee/self.wallet.initial_balance*100, 1
+                    )
+                )
+             )
+            self.print_message(75 * "-")
+
+    def calculate_hold_strategy(
+        self,
+        initial_quote: float
+    ) -> None:
+        """
+        Calculates hold strategy.
+        """
+        close = self.data.Close
+        self.data["returns"] = np.log(close / close.shift(1))
+        returns = self.data["returns"]
+        self.data["Hold Strategy"] = (
+            returns.cumsum().apply(np.exp) * initial_quote
+        )
+
+    def reset_params(
+        self,
+        interval_of_candles: str,
+        start_date_utc: str,
+        end_date_utc: str,
+        initial_quote: float,
+    ) -> None:
+        """
+        Resets params for a fresh data strategy.
+        """
+        self.load_data(
+            interval_of_candles=interval_of_candles,
+            start_date_utc=start_date_utc,
+            end_date_utc=end_date_utc
+        )
+        self.calculate_hold_strategy(
+            initial_quote=initial_quote
+        )
+        self.position_history = []
+        self.init_order_manager()
+        self.init_wallet(initial_quote=initial_quote)
+        np.random.seed(1)
+
+    def system_checks(self, bar: int) -> None:
+        """
+        Makes system checking like liquidation and
+        limit order execution
+        """
+        # debo checar la liquidación primero o las limit orders???
+        # tal vez deba ejecutar la limit order
+        # si se alcanzó primero que la liquidación
+        # si se liquida, tengo que cerrar todas las limit orders
+        self.wallet.balance += self.order_manager.check_liquidation(
+            date=self.get_value(bar=bar, column="Date"),
+            low=self.get_value(bar=bar, column="Low"),
+            high=self.get_value(bar=bar, column="High")
+        )
+        self.wallet.balance += self.order_manager.check_limit_orders(
+            date=self.get_value(bar=bar, column="Date"),
+            low=self.get_value(bar=bar, column="Low"),
+            close=self.get_value(bar=bar, column="Close"),
+            high=self.get_value(bar=bar, column="High"),
+        )
+        self.wallet.history.append(
+            self.get_nav(price=self.get_value(bar=bar, column="Close"))
+        )
+        self.position_history.append(self.order_manager.get_position)
+
+    def test_strategy(
+        self,
+        interval_of_candles: str,
+        start_date_utc: str,
+        end_date_utc: str,
+        initial_quote: float,
+        initial_leverage: int
+    ) -> float:
+        self.reset_params(
+            interval_of_candles=interval_of_candles,
+            start_date_utc=start_date_utc,
+            end_date_utc=end_date_utc,
+            initial_quote=initial_quote
+        )
+        self.order_manager.change_leverage(initial_leverage)
+        self.print_message("-" * 75)
+        self.print_message("Testing strategy | " + self.pair)
+        self.print_message("-" * 75)
+
+        self.prepare_strategy()
+
+        for bar in range(len(self.data)-1):
+            self.system_checks(bar=bar)
+            self.run_strategy(bar=bar)
+
+        self.system_checks(bar=bar+1)
+        self.order_manager.remove_limit_orders()
+        self.close_position(
+            quote=100.0,
+            bar=bar+1,
+            use_prc=True,
+            order_type=OrderType.MARKET
+        )
+        self.print_final_result()
+
+        return self.wallet.balance
+
+    def prepare_strategy(self) -> None:
+        """
+        Implement this on child class
+        """
+        pass
+
+    def run_strategy(
+        self,
+        bar: int
+    ) -> None:
+        """
+        Implement this on child class
+        """
+        pass
+
+    def plot_data(
+        self,
+        cols: Union[List[str], str] = "Close",
+        show_pos: bool = False
+    ) -> None:
+        """
+        Plots columns of data
+        """
+        if not show_pos:
+            self.data[cols].plot(figsize=(12, 8), title=self.pair)
+        else:
+            colors = [
+                'green' if pos == Position.LONG
+                else (
+                    "red" if pos == Position.SHORT
+                    else "gray"
+                )
+                for pos in self.position_history
+            ]
+            plt.figure(figsize=(10, 6))
+            for i in range(1, len(self.data)):
+                plt.plot(
+                    self.data.iloc[i-1:i+1].index,
+                    self.wallet.history[i-1:i+1],
+                    c=colors[i-1],
+                    linewidth=1
+                )
+            plt.plot(
+                self.data.index,
+                self.data[["Hold Strategy"]],
+                c="cornflowerblue",
+                linewidth=1
+            )
+            plt.show()

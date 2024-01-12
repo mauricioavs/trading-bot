@@ -1,8 +1,11 @@
-from orders.base_order import BaseOrder
+from orders import (
+    BaseOrder,
+    OrderType,
+    Position,
+    MIN_ORDERS
+)
 from datetime import datetime
-from orders.order_type import OrderType
 from chaos.triangular_distribution import CHAOS
-from orders.min_orders import MIN_ORDERS
 from margin_tables import MARGIN_TABLES
 from helpers import (
     is_zero,
@@ -10,14 +13,10 @@ from helpers import (
     green,
     cyan,
     yellow,
-)
-from helpers.error_messages import (
     NOT_PROVIDED_CLOSE_PRICE,
     NOT_PROVIDED_CANDLE,
-    FLUCTUATION_ERROR,
     INSUFICCIENT_MARGIN
 )
-from orders.position import Position
 
 
 class Order(BaseOrder):
@@ -92,8 +91,7 @@ class Order(BaseOrder):
 
     def get_min_quote_invest(
         self,
-        execution_quote: float,
-        fluctuation: float = 0.0
+        execution_quote: float
     ) -> dict:
         """
         Gets min investment of a certain quote
@@ -105,16 +103,14 @@ class Order(BaseOrder):
         Fluctuation is necessary due to difference
         of real with expected execution price.
         """
-        if fluctuation < 0 or fluctuation > 1:
-            raise ValueError(FLUCTUATION_ERROR)
         min_size_quote = self.min_base_open * execution_quote * (
-            1 + fluctuation
+            1 + self.fluctuation
         )
         min_margin_quote = self.size_to_margin(min_size_quote)
 
         min_opening_fee_quote = min_size_quote * self.get_fee_constant(
             self.order_type
-        ) * (1 + fluctuation)
+        ) * (1 + self.fluctuation)
         min_quote = min_margin_quote + min_opening_fee_quote
 
         return {

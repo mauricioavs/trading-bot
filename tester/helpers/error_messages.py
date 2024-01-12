@@ -1,9 +1,5 @@
-from orders.order_type import OrderType
-
-
 INVALID_ORDER_TYPE = (
-    "Invalid value '{order_type}'. "
-    f"Allowed values are: {[e.value for e in OrderType]}"
+    "Invalid value for order type: '{order_type}'."
 )
 
 INVALID_LEVERAGE = (
@@ -40,3 +36,15 @@ INSUFICCIENT_MARGIN = (
 MIN_INVEST_ERROR = (
     "Error submitting order: Min quote invest is {min_quote}"
 )
+
+CANT_CHANGE_LEV = (
+    "Cant change leverage to {new_lev},"
+    " current is {current_lev} with open position"
+)
+
+NO_MONEY = (
+    "Can't invest {invest} quote.\n"
+    "Available balance is {balance}."
+)
+
+MAX_INVEST_ERROR = "Trying to invest: {}. Cant invest more than {}"

@@ -1,13 +1,20 @@
 from datetime import datetime
 from margin_tables import MARGIN_TABLES
-from orders.order_type import OrderType
-from helpers.error_messages import (
-    INVALID_LEVERAGE
+from orders import (
+    OrderType,
+    Position,
+    Difficulty
 )
-from pydantic import BaseModel, model_validator
+from helpers import (
+    INVALID_LEVERAGE,
+    FLUCTUATION_ERROR
+)
+from pydantic import (
+    BaseModel,
+    model_validator,
+    field_validator
+)
 from typing import List
-from orders.position import Position
-from orders.difficulty import Difficulty
 from helpers import is_zero, cyan, yellow
 
 
@@ -34,9 +41,13 @@ class BaseOrder(BaseModel):
     fee_taker: Fee for market orders (expensive)
     order_type: An example is MARKET, see order_type.py
     difficulty: Difficulty of market, see difficulty.py
+    fluctuation: Stores max difference of price in percentage:
+                0 < fluctuation < 1
     reduce_only: Tells if order is reduce_only. This is
-        stored for limit orders execution use 
+        stored for limit orders execution use
         in order_manager.
+    use_prc_close: Tells how much to close on prc. This is
+    stored for limit orders execution use in order manager.
     created_at: datetime when order was created
 
     Opening Attributes:
@@ -72,13 +83,15 @@ class BaseOrder(BaseModel):
     fee_taker: float = 0.0004
     order_type: OrderType = OrderType.MARKET
     difficulty: Difficulty = Difficulty.MEDIUM
+    fluctuation: float = 0.05
     reduce_only: bool = False
+    use_prc_close: bool = False
     created_at: datetime = datetime.now()
 
     entry_price: float = None
     size_quote: float = None
     margin_quote: float = None
-    opening_fee_quote: float = None
+    opening_fee_quote: float = 0
     opened_at: datetime = None
 
     close_prices: List[float] = []
@@ -92,8 +105,23 @@ class BaseOrder(BaseModel):
 
     min_base_open: float = None
 
+    @field_validator("fluctuation")
+    def validate_fluctuation(cls, value: float) -> None:
+        """
+        Fluctuation is necessary due to difference
+        of real with expected execution price:
+
+        0 < fluctuation < 1
+        """
+        if value < 0 or value > 1:
+            raise ValueError(FLUCTUATION_ERROR)
+        return value
+
     @model_validator(mode='after')
     def validate_leverage(self) -> None:
+        """
+        Validates leverage considering used quote.
+        """
         max_leverage = MARGIN_TABLES.get_max_leverage(
             self.pair, self.expected_quote
         )
@@ -177,6 +205,33 @@ class BaseOrder(BaseModel):
                 return 1
             case Position.SHORT:
                 return -1
+    
+    @property
+    def realized_PnL(
+        self,
+    ) -> int:
+        """
+        Returns the realized PnL
+        """
+        if not self.PnLs:
+            return 0
+        return sum(self.PnLs)
+
+    @property
+    def realized_fee(
+        self,
+    ) -> int:
+        """
+        Returns the realized fee.
+
+        Fees:
+        Opening (just one)
+        closing (could be multiple)
+        """
+        fee = 0
+        fee += self.opening_fee_quote
+        fee += sum(self.closing_fee_quotes)
+        return fee
 
     def __repr__(self):
         """
@@ -265,3 +320,18 @@ class BaseOrder(BaseModel):
             case False:
                 msg = yellow("closed")
         self.print_message(f"Order already {msg}")
+
+    def should_execute(
+        self,
+        low: float,
+        high: float
+    ) -> bool:
+        """
+        Checks if order should be executed.
+        """
+        expected_price = self.expected_entry_price
+        match self.position:
+            case Position.LONG:
+                return low < expected_price
+            case Position.SHORT:
+                return high > expected_price
