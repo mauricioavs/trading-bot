@@ -7,7 +7,6 @@ from orders import (
 )
 from helpers import (
     INVALID_LEVERAGE,
-    FLUCTUATION_ERROR
 )
 from pydantic import (
     BaseModel,
@@ -41,8 +40,6 @@ class BaseOrder(BaseModel):
     fee_taker: Fee for market orders (expensive)
     order_type: An example is MARKET, see order_type.py
     difficulty: Difficulty of market, see difficulty.py
-    fluctuation: Stores max difference of price in percentage:
-                0 < fluctuation < 1
     reduce_only: Tells if order is reduce_only. This is
         stored for limit orders execution use
         in order_manager.
@@ -83,7 +80,6 @@ class BaseOrder(BaseModel):
     fee_taker: float = 0.0004
     order_type: OrderType = OrderType.MARKET
     difficulty: Difficulty = Difficulty.MEDIUM
-    fluctuation: float = 0.05
     reduce_only: bool = False
     use_prc_close: bool = False
     created_at: datetime = datetime.now()
@@ -104,18 +100,6 @@ class BaseOrder(BaseModel):
     closed_at: List[datetime] = []
 
     min_base_open: float = None
-
-    @field_validator("fluctuation")
-    def validate_fluctuation(cls, value: float) -> None:
-        """
-        Fluctuation is necessary due to difference
-        of real with expected execution price:
-
-        0 < fluctuation < 1
-        """
-        if value < 0 or value > 1:
-            raise ValueError(FLUCTUATION_ERROR)
-        return value
 
     @model_validator(mode='after')
     def validate_leverage(self) -> None:

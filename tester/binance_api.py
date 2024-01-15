@@ -16,9 +16,8 @@ from orders.difficulty import Difficulty
 from datetime import datetime
 import numpy as np
 from wallet import Wallet
-from typing import Any
 from helpers import MAX_INVEST_ERROR
-from typing import Union, List
+from typing import Union, List, Any
 import matplotlib.pyplot as plt
 
 
@@ -119,6 +118,7 @@ class BinanceAPI(BaseModel):
         """
         Inits wallet balance
         """
+        self.wallet = Wallet()
         self.wallet.set_initial_balance(
             quote=initial_quote
         )
@@ -261,15 +261,20 @@ class BinanceAPI(BaseModel):
 
     def get_nav(
         self,
-        price: float
+        bar: int
     ):
         """
         Gets net asset value: Total current balance
         considering open orders notional value in
         certain price and limit orders not executed.
         """
-        inv_quote = self.order_manager.get_invested_not_val_quote(
-            price=price
+        low = self.get_value(bar=bar, column="Low")
+        close = self.get_value(bar=bar, column="Close")
+        high = self.get_value(bar=bar, column="High")
+        inv_quote = self.order_manager.get_invested_margin_and_PnL(
+            low=low,
+            close=close,
+            high=high
         )
         limit_quote = self.order_manager.get_limit_orders_quote()
         return self.wallet.balance + inv_quote + limit_quote
@@ -302,13 +307,20 @@ class BinanceAPI(BaseModel):
         Tells if a quote could be spent considering
         available in wallet and open positions.
         """
+        if self.order_manager.must_close_open_positions(
+            requested_pos=position
+        ):
+            return True
         max_invest = self.max_invest(
             expected_exec_quote=expected_exec_quote,
             position=position
         )
-        if max_invest < quote:
-            self.print_message(MAX_INVEST_ERROR).format(
-                str(quote), str(max_invest)
+        if max_invest + 1e-12 < quote:
+            self.print_message(
+                MAX_INVEST_ERROR.format(
+                    str(round(quote, 2)),
+                    str(round(max_invest, 2))
+                )
             )
             return False
 
@@ -334,7 +346,7 @@ class BinanceAPI(BaseModel):
         Returns the earnings or investment of order
         (could be negative).
         """
-        if self.can_invest(
+        if reduce_only or self.can_invest(
             quote=quote,
             expected_exec_quote=expected_exec_quote,
             position=position
@@ -352,6 +364,7 @@ class BinanceAPI(BaseModel):
                 use_prc_close=use_prc_close,
                 reduce_only=reduce_only
             )
+            print("RET: ", returns)
             self.wallet.update_balance(quote=returns)
             return
         self.print_message(
@@ -370,7 +383,7 @@ class BinanceAPI(BaseModel):
         """
         Closes a percentage of position or an amount of it.
         """
-        if self.order_manager.get_position == Position.NEUTRAL:
+        if self.order_manager.currently_neutral:
             return
 
         self.submit_order(
@@ -473,7 +486,7 @@ class BinanceAPI(BaseModel):
 
     def print_final_result(self):
         profits = (self.wallet.balance - self.wallet.initial_balance)
-        perf = profits/(self.wallet.initial_balance * 100)
+        perf = profits/self.wallet.initial_balance * 100
         total_orders = 0
         good_orders = 0
         bad_orders = 0
@@ -579,19 +592,28 @@ class BinanceAPI(BaseModel):
         # tal vez deba ejecutar la limit order
         # si se alcanzó primero que la liquidación
         # si se liquida, tengo que cerrar todas las limit orders
-        self.wallet.balance += self.order_manager.check_liquidation(
-            date=self.get_value(bar=bar, column="Date"),
-            low=self.get_value(bar=bar, column="Low"),
-            high=self.get_value(bar=bar, column="High")
+        self.wallet.update_balance(
+            quote=self.order_manager.check_liquidation(
+                date=self.get_value(bar=bar, column="Date"),
+                low=self.get_value(bar=bar, column="Low"),
+                high=self.get_value(bar=bar, column="High")
+            )
         )
-        self.wallet.balance += self.order_manager.check_limit_orders(
-            date=self.get_value(bar=bar, column="Date"),
-            low=self.get_value(bar=bar, column="Low"),
-            close=self.get_value(bar=bar, column="Close"),
-            high=self.get_value(bar=bar, column="High"),
+        self.wallet.update_balance(
+            quote=self.order_manager.check_limit_orders(
+                date=self.get_value(bar=bar, column="Date"),
+                low=self.get_value(bar=bar, column="Low"),
+                close=self.get_value(bar=bar, column="Close"),
+                high=self.get_value(bar=bar, column="High"),
+            )
         )
+
+    def post_system_checks(self, bar: int) -> None:
+        """
+        System checking that runs after strategy.
+        """
         self.wallet.history.append(
-            self.get_nav(price=self.get_value(bar=bar, column="Close"))
+            self.get_nav(bar=bar)
         )
         self.position_history.append(self.order_manager.get_position)
 
@@ -601,7 +623,7 @@ class BinanceAPI(BaseModel):
         start_date_utc: str,
         end_date_utc: str,
         initial_quote: float,
-        initial_leverage: int
+        initial_leverage: int = 1
     ) -> float:
         self.reset_params(
             interval_of_candles=interval_of_candles,
@@ -614,11 +636,15 @@ class BinanceAPI(BaseModel):
         self.print_message("Testing strategy | " + self.pair)
         self.print_message("-" * 75)
 
-        self.prepare_strategy()
+        strategy = self.prepare_strategy()
 
         for bar in range(len(self.data)-1):
             self.system_checks(bar=bar)
-            self.run_strategy(bar=bar)
+            strategy = self.run_strategy(
+                bar=bar,
+                strategy=strategy
+            )
+            self.post_system_checks(bar=bar+1)
 
         self.system_checks(bar=bar+1)
         self.order_manager.remove_limit_orders()
@@ -628,24 +654,10 @@ class BinanceAPI(BaseModel):
             use_prc=True,
             order_type=OrderType.MARKET
         )
+        self.post_system_checks(bar=bar+1)
         self.print_final_result()
 
         return self.wallet.balance
-
-    def prepare_strategy(self) -> None:
-        """
-        Implement this on child class
-        """
-        pass
-
-    def run_strategy(
-        self,
-        bar: int
-    ) -> None:
-        """
-        Implement this on child class
-        """
-        pass
 
     def plot_data(
         self,
@@ -681,3 +693,27 @@ class BinanceAPI(BaseModel):
                 linewidth=1
             )
             plt.show()
+
+    def prepare_strategy(self) -> Any:
+        """
+        Implement this on child class.
+
+        Prepare the strategy and return it.
+        """
+        strategy = None
+        return strategy
+
+    def run_strategy(
+        self,
+        bar: int,
+        strategy: Any
+    ) -> Any:
+        """
+        Implement this on child class.
+
+        Runs strategy given a bar.
+
+        Returns strategy.
+        """
+        pass
+        return strategy

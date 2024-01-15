@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from orders import (
     Order,
     Position,
@@ -8,9 +8,10 @@ from orders import (
 from typing import List, Union
 from datetime import datetime
 from orders.difficulty import Difficulty
-from helpers.error_messages import (
+from helpers import (
     MIN_INVEST_ERROR,
-    CANT_CHANGE_LEV
+    CANT_CHANGE_LEV,
+    FLUCTUATION_ERROR
 )
 
 
@@ -33,7 +34,7 @@ class OrderManager(BaseModel):
         Netting: Orders are merged into one
         Hedging: Orders are separated
     fluctuation: Stores max difference of price in percentage:
-                0 < fluctuation < 1 (validated in order)
+                0 < fluctuation < 1
 
     Other Attributes:
     open_orders: Stores current open positions
@@ -58,6 +59,18 @@ class OrderManager(BaseModel):
     closed_orders: List[Order] = []
     netting_liquidation: float = None
 
+    @field_validator("fluctuation")
+    def validate_fluctuation(cls, value: float) -> None:
+        """
+        Fluctuation is necessary due to difference
+        of real with expected execution price:
+
+        0 < fluctuation < 1
+        """
+        if value < 0 or value > 1:
+            raise ValueError(FLUCTUATION_ERROR)
+        return value
+
     @property
     def get_position(self) -> Position:
         """
@@ -69,6 +82,27 @@ class OrderManager(BaseModel):
         match self.system:
             case OrderSystem.NETTING:
                 return self.open_orders[0].position
+
+    @property
+    def currently_long(self) -> bool:
+        """
+        Tells if position is LONG
+        """
+        return self.get_position == Position.LONG
+
+    @property
+    def currently_short(self) -> bool:
+        """
+        Tells if position is SHORT
+        """
+        return self.get_position == Position.SHORT
+
+    @property
+    def currently_neutral(self) -> bool:
+        """
+        Tells if position is NEUTRAL
+        """
+        return self.get_position == Position.NEUTRAL
 
     @property
     def get_opposite_position(self) -> Position:
@@ -120,7 +154,8 @@ class OrderManager(BaseModel):
             date=datetime.now()
         )
         inv = order.get_min_quote_invest(
-            execution_quote=current_quote_val
+            execution_quote=current_quote_val,
+            fluctuation=self.fluctuation
         )
         return inv["min_quote"]
 
@@ -156,6 +191,31 @@ class OrderManager(BaseModel):
                 base=order.open_size_base
             )
         return not_val_quote
+
+    def get_invested_margin_and_PnL(
+        self,
+        low: float,
+        close: float,
+        high: float
+    ) -> float:
+        """
+        Gets invested margin and PnL at the end of period.
+        """
+        match self.system:
+            case OrderSystem.NETTING:
+                if self.should_netting_liquidate(
+                    low=low,
+                    high=high
+                ):
+                    return 0
+                total = 0
+                for order in self.open_orders:
+                    total += order.open_margin_quote
+                    total += order.get_PnL(
+                            current_price=close,
+                            quote=order.open_size_quote
+                        )
+                return total
 
     def get_limit_orders_quote(
         self
@@ -272,7 +332,7 @@ class OrderManager(BaseModel):
         position: Position,
         order_type: OrderType,
         date: datetime,
-        use_prc_close: float,
+        use_prc_close: float = False,
         reduce_only: bool = False,
     ) -> Order:
         """
@@ -285,7 +345,6 @@ class OrderManager(BaseModel):
             fee_maker=self.fee_maker,
             fee_taker=self.fee_taker,
             difficulty=self.difficulty,
-            fluctuation=self.fluctuation,
             expected_quote=quote,
             expected_entry_price=expected_execution_price,
             position=position,
@@ -368,8 +427,9 @@ class OrderManager(BaseModel):
             )
             return 0.0
 
-        times_min_quote = quote // (min_quote_invest-1e-12)
-        quote = min_quote_invest * times_min_quote
+        if not reduce_only:
+            times_min_quote = quote // (min_quote_invest-1e-12)
+            quote = min_quote_invest * times_min_quote
 
         match order_type:
             case OrderType.MARKET:

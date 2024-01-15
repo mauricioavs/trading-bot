@@ -13,3 +13,4 @@ models_work/
 .vscode/
 tester/data/*
 tester/.env
+tester/strategies/models/*

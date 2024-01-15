@@ -91,7 +91,8 @@ class Order(BaseOrder):
 
     def get_min_quote_invest(
         self,
-        execution_quote: float
+        execution_quote: float,
+        fluctuation: float = 0
     ) -> dict:
         """
         Gets min investment of a certain quote
@@ -104,13 +105,13 @@ class Order(BaseOrder):
         of real with expected execution price.
         """
         min_size_quote = self.min_base_open * execution_quote * (
-            1 + self.fluctuation
+            1 + fluctuation
         )
         min_margin_quote = self.size_to_margin(min_size_quote)
 
         min_opening_fee_quote = min_size_quote * self.get_fee_constant(
             self.order_type
-        ) * (1 + self.fluctuation)
+        )
         min_quote = min_margin_quote + min_opening_fee_quote
 
         return {
@@ -143,7 +144,8 @@ class Order(BaseOrder):
         990 quote.
         """
         inv = self.get_min_quote_invest(
-            execution_quote=self.entry_price
+            execution_quote=self.entry_price,
+            fluctuation=0
         )
         expected_margin_quote = self.size_to_margin(self.expected_quote)
         times_min_quote = expected_margin_quote // (inv["min_quote"]-1e-12)
