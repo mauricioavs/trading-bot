@@ -12,9 +12,11 @@ class Wallet():
     balance: is the current balance quote
     history: Stores the balance history
     """
-    initial_balance: float = 0
-    balance: float = 0
-    history: List[float] = []
+
+    def __init__(self) -> None:
+        self.initial_balance: float = 0
+        self.balance: float = 0
+        self.history: List[float] = []
 
     def cant_spend_msg(
         self,

@@ -636,7 +636,6 @@ class BinanceAPI(BaseModel):
         self.print_message("-" * 75)
 
         strategy = self.prepare_strategy()
-
         for bar in range(len(self.data)-1):
             self.system_checks(bar=bar)
             strategy = self.run_strategy(
@@ -660,14 +659,26 @@ class BinanceAPI(BaseModel):
 
     def plot_data(
         self,
-        cols: Union[List[str], str] = "Close",
+        cols: Union[List[str], str] = ["Hold Strategy"],
         show_pos: bool = False
     ) -> None:
         """
         Plots columns of data
         """
+        plt.figure(figsize=(16, 8))
+        for col in cols:
+            plt.plot(
+                self.data.index,
+                self.data[[col]],
+                linewidth=1,
+                label=col
+            )
         if not show_pos:
-            self.data[cols].plot(figsize=(12, 8), title=self.pair)
+            plt.plot(
+                self.data.index,
+                self.wallet.history,
+                label="Strategy"
+            )
         else:
             colors = [
                 'green' if pos == Position.LONG
@@ -677,21 +688,17 @@ class BinanceAPI(BaseModel):
                 )
                 for pos in self.position_history
             ]
-            plt.figure(figsize=(10, 6))
             for i in range(1, len(self.data)):
                 plt.plot(
                     self.data.iloc[i-1:i+1].index,
                     self.wallet.history[i-1:i+1],
                     c=colors[i-1],
-                    linewidth=1
+                    linewidth=1,
+                    label="Strategy" if i == 1 else None
                 )
-            plt.plot(
-                self.data.index,
-                self.data[["Hold Strategy"]],
-                c="cornflowerblue",
-                linewidth=1
-            )
-            plt.show()
+        plt.title(self.pair)
+        plt.legend(loc="best")
+        plt.show()
 
     def prepare_strategy(self) -> Any:
         """

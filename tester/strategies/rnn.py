@@ -126,12 +126,12 @@ class RNN(BaseModel):
         diff = current_price - previous_prediction
         real_prediction = current_prediction + diff
 
-        if abs(current_price - real_prediction) > current_price * 0.01 and self.last_position == Position.NEUTRAL:
-            self.last_position = Position.NEUTRAL
-        elif real_prediction > current_price:
-            self.last_position = Position.SHORT
-        elif real_prediction < current_price:
+        # if abs(current_price - real_prediction) > current_price * 0.01 and self.last_position == Position.NEUTRAL:
+        #    self.last_position = Position.NEUTRAL
+        if real_prediction > current_price:
             self.last_position = Position.LONG
+        elif real_prediction < current_price:
+            self.last_position = Position.SHORT
         else:
             self.last_position = Position.NEUTRAL
         return self.last_position

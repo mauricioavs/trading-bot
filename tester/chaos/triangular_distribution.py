@@ -21,8 +21,14 @@ class TriangularDistribution:
         size: int = 100,
     ) -> List[float]:
         """
-        Generates a sample of the distribution
+        Generates a sample of the distribution.
+
+        if low==high, triangular distribution
+        can't be generated.
         """
+        if abs(low - high) < 1e-12:
+            dot = (low+high)/2
+            return [dot] * size
         sample = np.random.triangular(low, center, high, size)
         return sample
 
