@@ -364,7 +364,6 @@ class BinanceAPI(BaseModel):
                 use_prc_close=use_prc_close,
                 reduce_only=reduce_only
             )
-            print("RET: ", returns)
             self.wallet.update_balance(quote=returns)
             return
         self.print_message(
