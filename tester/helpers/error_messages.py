@@ -48,3 +48,5 @@ NO_MONEY = (
 )
 
 MAX_INVEST_ERROR = "Trying to invest: {}. Can't invest more than {}"
+
+REQUIRED_PARAM = "Some required parameter is None"

@@ -16,7 +16,10 @@ from orders.difficulty import Difficulty
 from datetime import datetime
 import numpy as np
 from wallet import Wallet
-from helpers import MAX_INVEST_ERROR
+from helpers import (
+    MAX_INVEST_ERROR,
+    REQUIRED_PARAM
+)
 from typing import Union, List, Any
 import matplotlib.pyplot as plt
 
@@ -281,15 +284,19 @@ class BinanceAPI(BaseModel):
 
     def max_invest(
         self,
-        expected_exec_quote: float,
-        position: Position
+        position: Position = None,
+        expected_exec_quote: float = None,
+        consider_closing: bool = True
     ) -> float:
         """
-        Returns the max invest considering the closing of
+        Returns the max invest quote considering the closing of
         positions
         """
-        max_invest = self.wallet.balance
-        if self.order_manager.must_close_open_positions(
+        if consider_closing and not (position or expected_exec_quote):
+            raise AttributeError(REQUIRED_PARAM)
+
+        max_invest = self.wallet.balance * self.order_manager.leverage
+        if consider_closing and self.order_manager.must_close_open_positions(
             requested_pos=position
         ):
             max_invest += self.order_manager.get_invested_not_val_quote(
@@ -642,7 +649,7 @@ class BinanceAPI(BaseModel):
                 bar=bar,
                 strategy=strategy
             )
-            self.post_system_checks(bar=bar+1)
+            self.post_system_checks(bar=bar)
 
         self.system_checks(bar=bar+1)
         self.order_manager.remove_limit_orders()
@@ -665,7 +672,7 @@ class BinanceAPI(BaseModel):
         """
         Plots columns of data
         """
-        plt.figure(figsize=(16, 8))
+        plt.figure(figsize=(12, 8))
         for col in cols:
             plt.plot(
                 self.data.index,
