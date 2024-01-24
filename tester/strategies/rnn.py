@@ -66,8 +66,7 @@ class RNN(BaseModel):
         """
         return row + 1 >= self.timestamps
 
-
-    def calculate(self, force = False) -> None:
+    def calculate(self, force=False) -> None:
         """
         1. Gets data and scales it
         2. Prepares timeseries
@@ -86,9 +85,9 @@ class RNN(BaseModel):
             X.append(inputs[i-self.timestamps:i])
         X = np.array(X)
 
-        predicted_position =np.concatenate((
+        predicted_position = np.concatenate((
             [np.nan]*(self.timestamps-1), self.model.predict(
-                X, verbose = 0
+                X, verbose=0
             ).flatten()
         ))
         self.data[self.column_name] = self.scaler_obj.inverse_transform(
@@ -126,8 +125,6 @@ class RNN(BaseModel):
         diff = current_price - previous_prediction
         real_prediction = current_prediction + diff
 
-        # if abs(current_price - real_prediction) > current_price * 0.01 and self.last_position == Position.NEUTRAL:
-        #    self.last_position = Position.NEUTRAL
         if real_prediction > current_price:
             self.last_position = Position.LONG
         elif real_prediction < current_price:

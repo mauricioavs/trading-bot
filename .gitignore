@@ -14,3 +14,4 @@ models_work/
 tester/data/*
 tester/.env
 tester/strategies/models/*
+production/.env
