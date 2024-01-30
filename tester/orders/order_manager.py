@@ -217,16 +217,16 @@ class OrderManager(BaseModel):
                         )
                 return total
 
-    def get_limit_orders_quote(
+    def get_limit_orders_margin(
         self
     ):
         """
-        Sum all notional values of open orders in quote
-        currency.
+        Sum all margin of limit orders, i.e., the quote
+        used to register each limit order.
         """
         quote = 0
         for order in self.limit_orders:
-            quote += order.expected_quote
+            quote += order.quote_used_to_limit
         return quote
 
     def get_execution_price(
@@ -482,7 +482,7 @@ class OrderManager(BaseModel):
                     date=creation_date
                 )
                 self.add_to_limit_orders(order)
-                return -quote
+                return -order.quote_used_to_limit
 
     def execute_order(
         self,
@@ -704,7 +704,7 @@ class OrderManager(BaseModel):
         """
         returns = 0
         for order in self.limit_orders:
-            returns += order.expected_quote
+            returns += order.quote_used_to_limit
         self.limit_orders = []
         return returns
 
@@ -740,7 +740,7 @@ class OrderManager(BaseModel):
                     reduce_only=order.reduce_only,
                     force_limit=True
                 )
-                returns += order.expected_quote
+                returns += order.quote_used_to_limit
                 self.limit_orders.remove(order)
         return returns
 

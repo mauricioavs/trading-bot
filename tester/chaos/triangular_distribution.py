@@ -91,14 +91,20 @@ class TriangularDistribution:
             case OrderType.LIMIT:
                 match position:
                     case Position.LONG:
-                        best_execution = low
-                        worst_execution = min(high, expected_price)
-                        close = min(close, worst_execution)
-
+                        return expected_price
                     case Position.SHORT:
-                        best_execution = high
-                        worst_execution = max(low, expected_price)
-                        close = max(close, worst_execution)
+                        return expected_price
+
+                # match position:
+                #     case Position.LONG:
+                #         best_execution = low
+                #         worst_execution = min(high, expected_price)
+                #         close = min(close, worst_execution)
+
+                #     case Position.SHORT:
+                #         best_execution = high
+                #         worst_execution = max(low, expected_price)
+                #         close = max(close, worst_execution)
 
         match difficulty:
             case difficulty.LOW:

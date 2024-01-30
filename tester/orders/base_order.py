@@ -118,6 +118,15 @@ class BaseOrder(BaseModel):
             )
 
     @property
+    def quote_used_to_limit(self) -> float:
+        """
+        Method used for limit orders in order to
+        calculate our quote spent to register a
+        limit order.
+        """
+        return self.expected_quote/self.leverage
+
+    @property
     def open_size_quote(self) -> float:
         """
         Gets current open quote.
@@ -189,7 +198,7 @@ class BaseOrder(BaseModel):
                 return 1
             case Position.SHORT:
                 return -1
-    
+
     @property
     def realized_PnL(
         self,

@@ -36,27 +36,36 @@ class Tester(BinanceAPI):
 
         Returns strategy.
         """
+        if self.order_manager.currently_neutral:
+            self.remove_limit_orders()
+
+        else:
+            self.remove_limit_orders()
+            self.go_neutral(
+                bar=bar,
+                order_type="LIMIT",
+                expected_exec_quote=None
+            )
+
+        period = 1
+        center_of_period = self.data[max(0, bar+1-period):bar+1]["Close"].mean()
+        low_of_period = min(self.data[max(0, bar+1-period):bar+1]["Low"])
+        high_of_period = max(self.data[max(0, bar+1-period):bar+1]["High"])
         predicted_pos = strategy["RNN"].strategy(row=bar)
 
         if predicted_pos == Position.LONG and self.order_manager.currently_short:
-            self.go_neutral(bar=bar)
-            # self.go_long(
-            #     bar=bar,
-            #     quote=strategy["invest"],
-            #     wallet_prc=False,
-            #     go_neutral_first=True,
-            #     order_type="MARKET"
-            # )
+            self.go_neutral(
+                bar=bar,
+                order_type="LIMIT",
+                expected_exec_quote=low_of_period + abs(center_of_period - low_of_period) * 0.1
+            )
 
         elif predicted_pos == Position.SHORT and self.order_manager.currently_long:
-            self.go_neutral(bar=bar)
-            # self.go_short(
-            #     bar=bar,
-            #     quote=strategy["invest"],
-            #     wallet_prc=False,
-            #     go_neutral_first=True,
-            #     order_type="MARKET"
-            # )
+            self.go_neutral(
+                bar=bar,
+                order_type="LIMIT",
+                expected_exec_quote=high_of_period - abs(center_of_period - high_of_period) * 0.1
+            )
 
         elif predicted_pos == Position.LONG and not self.order_manager.currently_long:
             # if strategy["pos_hist"][-1] == Position.LONG:
@@ -67,7 +76,9 @@ class Tester(BinanceAPI):
                 quote=strategy["invest"],
                 wallet_prc=False,
                 go_neutral_first=True,
-                order_type="MARKET"
+                order_type="LIMIT",
+                expected_exec_quote=low_of_period
+
             )
 
         elif predicted_pos == Position.SHORT and not self.order_manager.currently_short:
@@ -79,7 +90,8 @@ class Tester(BinanceAPI):
                 quote=strategy["invest"],
                 wallet_prc=False,
                 go_neutral_first=True,
-                order_type="MARKET"
+                order_type="LIMIT",
+                expected_exec_quote=high_of_period
             )
         strategy["pos_hist"].append(predicted_pos)
         return strategy

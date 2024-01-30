@@ -279,7 +279,7 @@ class BinanceAPI(BaseModel):
             close=close,
             high=high
         )
-        limit_quote = self.order_manager.get_limit_orders_quote()
+        limit_quote = self.order_manager.get_limit_orders_margin()
         return self.wallet.balance + inv_quote + limit_quote
 
     def max_invest(
@@ -384,7 +384,8 @@ class BinanceAPI(BaseModel):
         quote: float,
         bar: int,
         use_prc: bool = True,
-        order_type: Union[OrderType, str] = OrderType.MARKET
+        order_type: Union[OrderType, str] = OrderType.MARKET,
+        expected_exec_quote: float = None
     ) -> None:
         """
         Closes a percentage of position or an amount of it.
@@ -392,11 +393,14 @@ class BinanceAPI(BaseModel):
         if self.order_manager.currently_neutral:
             return
 
+        if expected_exec_quote is None:
+            expected_exec_quote = self.get_value(bar=bar, column="Close")
+
         self.submit_order(
             creation_date=self.get_value(bar=bar, column="Date"),
             low=self.get_value(bar=bar, column="Low"),
             close=self.get_value(bar=bar, column="Close"),
-            expected_exec_quote=self.get_value(bar=bar, column="Close"),
+            expected_exec_quote=expected_exec_quote,
             high=self.get_value(bar=bar, column="High"),
             quote=quote,
             position=self.order_manager.get_opposite_position,
@@ -408,7 +412,8 @@ class BinanceAPI(BaseModel):
     def go_neutral(
         self,
         bar: int,
-        order_type: Union[OrderType, str] = OrderType.MARKET
+        order_type: Union[OrderType, str] = OrderType.MARKET,
+        expected_exec_quote: float = None
     ) -> None:
         """
         Closes all the opened positions
@@ -419,7 +424,8 @@ class BinanceAPI(BaseModel):
                     quote=100.0,
                     bar=bar,
                     use_prc=True,
-                    order_type=order_type
+                    order_type=order_type,
+                    expected_exec_quote=expected_exec_quote
                 )
 
     def go_long(
@@ -429,7 +435,8 @@ class BinanceAPI(BaseModel):
         expected_exec_quote: float = None,
         wallet_prc: bool = False,
         go_neutral_first: bool = False,
-        order_type: Union[OrderType, str] = OrderType.MARKET
+        order_type: Union[OrderType, str] = OrderType.MARKET,
+        reduce_only: bool = False
     ) -> None:
         """
         Submits a LONG position
@@ -453,7 +460,7 @@ class BinanceAPI(BaseModel):
             position=Position.LONG,
             order_type=order_type,
             use_prc_close=False,
-            reduce_only=False
+            reduce_only=reduce_only
         )
 
     def go_short(
@@ -463,7 +470,8 @@ class BinanceAPI(BaseModel):
         expected_exec_quote: float = None,
         wallet_prc: bool = False,
         go_neutral_first: bool = False,
-        order_type: Union[OrderType, str] = OrderType.MARKET
+        order_type: Union[OrderType, str] = OrderType.MARKET,
+        reduce_only: bool = False
     ) -> None:
         """
         Submits a LONG position
@@ -487,7 +495,7 @@ class BinanceAPI(BaseModel):
             position=Position.SHORT,
             order_type=order_type,
             use_prc_close=False,
-            reduce_only=False
+            reduce_only=reduce_only
         )
 
     def print_final_result(self):
@@ -589,10 +597,28 @@ class BinanceAPI(BaseModel):
         self.init_wallet(initial_quote=initial_quote)
         np.random.seed(1)
 
+    def remove_limit_orders(self) -> float:
+        """
+        Removes limit orders not executed and returns the
+        invested money to wallet.
+        """
+        returns = self.order_manager.remove_limit_orders()
+        self.wallet.update_balance(
+            quote=returns
+        )
+
     def system_checks(self, bar: int) -> None:
         """
         Makes system checking like liquidation and
-        limit order execution
+        limit order execution.
+
+        The order is:
+        - check liquidation
+        - check limit orders
+        - check again liquidation
+
+        This is managed that way in order to give
+        preference to liquidation on period.
         """
         # debo checar la liquidación primero o las limit orders???
         # tal vez deba ejecutar la limit order
@@ -611,6 +637,13 @@ class BinanceAPI(BaseModel):
                 low=self.get_value(bar=bar, column="Low"),
                 close=self.get_value(bar=bar, column="Close"),
                 high=self.get_value(bar=bar, column="High"),
+            )
+        )
+        self.wallet.update_balance(
+            quote=self.order_manager.check_liquidation(
+                date=self.get_value(bar=bar, column="Date"),
+                low=self.get_value(bar=bar, column="Low"),
+                high=self.get_value(bar=bar, column="High")
             )
         )
 
@@ -652,7 +685,7 @@ class BinanceAPI(BaseModel):
             self.post_system_checks(bar=bar)
 
         self.system_checks(bar=bar+1)
-        self.order_manager.remove_limit_orders()
+        self.remove_limit_orders()
         self.close_position(
             quote=100.0,
             bar=bar+1,
