@@ -46,8 +46,9 @@ class Tester(BinanceAPI):
                 order_type="LIMIT",
                 expected_exec_quote=None
             )
+            return strategy
 
-        period = 1
+        period = 12
         center_of_period = self.data[max(0, bar+1-period):bar+1]["Close"].mean()
         low_of_period = min(self.data[max(0, bar+1-period):bar+1]["Low"])
         high_of_period = max(self.data[max(0, bar+1-period):bar+1]["High"])
@@ -69,7 +70,7 @@ class Tester(BinanceAPI):
 
         elif predicted_pos == Position.LONG and not self.order_manager.currently_long:
             # if strategy["pos_hist"][-1] == Position.LONG:
-            self.go_neutral(bar=bar)
+            # self.go_neutral(bar=bar)
             strategy["invest"] = self.max_invest(consider_closing=False) / 10
             self.go_long(
                 bar=bar,
@@ -77,13 +78,13 @@ class Tester(BinanceAPI):
                 wallet_prc=False,
                 go_neutral_first=True,
                 order_type="LIMIT",
-                expected_exec_quote=low_of_period
+                expected_exec_quote=low_of_period + abs(center_of_period - low_of_period) * 0.1
 
             )
 
         elif predicted_pos == Position.SHORT and not self.order_manager.currently_short:
             # if strategy["pos_hist"][-1] == Position.SHORT:
-            self.go_neutral(bar=bar)
+            # self.go_neutral(bar=bar)
             strategy["invest"] = self.max_invest(consider_closing=False) / 10
             self.go_short(
                 bar=bar,
@@ -91,7 +92,7 @@ class Tester(BinanceAPI):
                 wallet_prc=False,
                 go_neutral_first=True,
                 order_type="LIMIT",
-                expected_exec_quote=high_of_period
+                expected_exec_quote=high_of_period - abs(center_of_period - high_of_period) * 0.1
             )
-        strategy["pos_hist"].append(predicted_pos)
+        # strategy["pos_hist"].append(predicted_pos)
         return strategy

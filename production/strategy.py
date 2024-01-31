@@ -16,7 +16,8 @@ class Strategy(FuturesTrader):
 
     def run_strategy(
         self,
-        period_completed: bool
+        period_completed: bool,
+        last_price: float
     ) -> None:
         """
         Implement this on child class.

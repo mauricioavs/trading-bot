@@ -3,8 +3,8 @@ from config.settings import (
     API_KEY, SECRET_KEY,
 )
 from binance.client import Client
-from binance.websocket.cm_futures.websocket_client import (
-    CMFuturesWebsocketClient
+from binance.websocket.um_futures.websocket_client import (
+    UMFuturesWebsocketClient
 )
 from helpers import (
     INVALID_PAIR,
@@ -20,6 +20,7 @@ import pandas as pd
 import requests
 from orders import Position, MIN_ORDERS
 from datetime import datetime
+import json
 
 
 class FuturesTrader():
@@ -61,10 +62,10 @@ class FuturesTrader():
         self.verbose: bool = verbose
 
         self.client: Client = self.init_client()
-        self.quote = self.get_quote(self.pair)
+        self.quote = self.get_quote_symbol(self.pair)
         self.last_heartbeat: datetime = datetime.now()
         self.strategy: dict = dict()
-        self.stream: CMFuturesWebsocketClient = None
+        self.stream: UMFuturesWebsocketClient = None
         self.data: pd.DataFrame = None
         self.min_base_open = MIN_ORDERS.get_min_units(self.pair)
         self.strategy = None
@@ -90,7 +91,7 @@ class FuturesTrader():
         if self.verbose:
             print(msg, **kwargs)
 
-    def get_quote(
+    def get_quote_symbol(
         self,
         pair: str
     ) -> str:
@@ -139,6 +140,27 @@ class FuturesTrader():
         """
         return self.get_pos_info()["position"]
 
+    @property
+    def currently_neutral(self) -> bool:
+        """
+        Tells if no current position
+        """
+        return self.get_position() == Position.NEUTRAL
+
+    @property
+    def currently_long(self) -> bool:
+        """
+        Tells if current long position
+        """
+        return self.get_position() == Position.LONG
+
+    @property
+    def currently_short(self) -> bool:
+        """
+        Tells if current short position
+        """
+        return self.get_position() == Position.SHORT
+
     def get_opposite_position(self) -> Position:
         """
         Gets opposite position.
@@ -181,12 +203,22 @@ class FuturesTrader():
         )
         return quote
 
-    def get_current_leverage(self):
+    def get_current_leverage(self) -> int:
         """
         Gets current leverage
         """
         response = self.get_pos_info()
         return response["leverage"]
+
+    def get_max_invest(self) -> float:
+        """
+        Gets max invest considering just wallet
+        balance and leverage
+        """
+        wallet = self.get_available_balance()
+        lev = self.get_current_leverage()
+
+        return wallet * lev
 
     def get_liquidation_price(self) -> float:
         """
@@ -250,17 +282,12 @@ class FuturesTrader():
             "Taker Buy Base Asset Volume",
             "Taker Buy Quote Asset Volume", "Ignore", "Date"
         ]
-        use_columns = [
-            "Date", "Open", "High", "Low",
-            "Close", "Volume", "Quote Asset Volume",
-            "Number of Trades", "Taker Buy Base Asset Volume",
-            "Taker Buy Quote Asset Volume"
-        ]
+        use_columns = ["Date"] + list(self.cols_to_use().keys())
         df = df[use_columns].copy()
         df.set_index("Date", inplace=True)
         for column in df.columns:
             df[column] = pd.to_numeric(df[column], errors="coerce")
-        df["Complete"] = [True for row in range(len(df)-1)] + [False]
+        df["Complete"] = [True for row in range(len(df)-1)] + [pd.NA]
         self.data = df
 
     def start_streaming(
@@ -270,13 +297,13 @@ class FuturesTrader():
         """
         Starts streaming of Binance.
         """
-        self.stream = CMFuturesWebsocketClient()
-        self.stream.start()
+        self.stream = UMFuturesWebsocketClient(
+            on_message=self.message_handler
+        )
         self.stream.kline(
-            symbol=self.pair.lower() + "_perp",
+            symbol=self.pair,
             id=1,
-            interval=interval,
-            callback=self.message_handler,
+            interval=interval
         )
 
     def stop_streaming(self) -> None:
@@ -314,7 +341,7 @@ class FuturesTrader():
         if go_neutral:
             self.go_neutral()
 
-    def skip_first_message(msg: dict) -> bool:
+    def skip_first_message(self, msg: dict) -> bool:
         """
         Skips first confirmation message of streaming
         """
@@ -341,11 +368,41 @@ class FuturesTrader():
         time_elapsed = current_datetime - self.last_heartbeat
         if time_elapsed.seconds > self.heartbeat_period:
             self.send_heartbeat()
+    
+    def cols_to_use(
+        self,
+        oopen: float = pd.NA,
+        high: float = pd.NA,
+        low: float = pd.NA,
+        close: float = pd.NA,
+        volume: float = pd.NA,
+        QAVol: float = pd.NA,
+        NoT: float = pd.NA,
+        TBBAV: float = pd.NA,
+        TBQAV: float = pd.NA
+    ) -> dict:
+        """
+        Columns to use, do not include Date here
+        because it is used to index in get_most_recent_data
+        function.
+        """
+        return {
+            "Open": oopen,
+            "High": high,
+            "Low": low,
+            "Close": close,
+            "Volume": volume,
+            "Quote Asset Volume": QAVol,
+            "Number of Trades": NoT,
+            "Taker Buy Base Asset Volume": TBBAV,
+            "Taker Buy Quote Asset Volume": TBQAV
+        }
 
-    def message_handler(self, msg: dict) -> None:
+    def message_handler(self, _, msg: dict) -> None:
         """
         Handles the streaming
         """
+        msg = json.loads(msg)
         if self.skip_first_message(msg=msg):
             return
         self.print_message(msg=".", end="", flush=True)
@@ -367,16 +424,27 @@ class FuturesTrader():
 
         self.manage_heartbeat(current_datetime=event_time)
 
-        new_row = [
-            oopen, high, low, close, volume,
-            QAVol, NoT, TBBAV, TBQAV, complete
-        ]
-        col_num = self.data.shape[1]
-        self.data.loc[start_time] = new_row + [False] * (
-            col_num - len(new_row)
+        new_row = self.cols_to_use(
+            oopen=oopen,
+            high=high,
+            low=low,
+            close=close,
+            volume=volume,
+            QAVol=QAVol,
+            NoT=NoT,
+            TBBAV=TBBAV,
+            TBQAV=TBBAV
         )
 
-        self.run_strategy(period_completed=complete)
+        new_row["Complete"] = complete
+
+        col_names = list(new_row.keys())
+        col_values = list(new_row.values())
+        self.data.loc[start_time, col_names] = col_values
+        self.run_strategy(
+            period_completed=complete,
+            last_price=close
+        )
         if complete:
             self.print_message(msg="C", end="", flush=True)
 
@@ -397,11 +465,14 @@ class FuturesTrader():
 
     def go_stop_market(
         self,
-        when_prc_reaches: float = 99.0
+        when_prc_reaches: float = 99.0,
+        close_previous: bool = True
     ) -> None:
         """
         Makes a stop market in order to lose less money.
         """
+        if close_previous:
+            self.close_all_stop_market()
         base = self.get_open_base()
         side = self.get_opposite_position()
         if side == Position.NEUTRAL:
@@ -647,7 +718,8 @@ class FuturesTrader():
 
     def run_strategy(
         self,
-        period_completed: bool
+        period_completed: bool,
+        last_price: float
     ) -> None:
         """
         Implement this on child class.
