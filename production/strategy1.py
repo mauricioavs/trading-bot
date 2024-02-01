@@ -1,6 +1,7 @@
 from futures_trader import FuturesTrader
 from strategies import RNN
 from orders import Position
+from datetime import datetime
 
 
 class Strategy(FuturesTrader):
@@ -29,7 +30,8 @@ class Strategy(FuturesTrader):
     def run_strategy(
         self,
         period_completed: bool,
-        last_price: float
+        last_price: float,
+        date: datetime
     ) -> None:
         """
         Implement this on child class.
@@ -55,8 +57,9 @@ class Strategy(FuturesTrader):
         low_of_p = min(self.data.tail(period)["Low"])
         high_of_p = max(self.data.tail(period)["High"])
 
-        self.strategy["RNN"].calculate_for_last_row()
-        predicted_pos = self.strategy["RNN"].strategy(row=-1)
+        self.strategy["RNN"].calculate_for_row(index=date)
+        predicted_pos = self.strategy["RNN"].strategy(index=date)
+        print("PREDICTED_POS: ", predicted_pos)
 
         if predicted_pos == Position.LONG and self.currently_short:
             self.go_neutral(
@@ -64,6 +67,7 @@ class Strategy(FuturesTrader):
                 prc=100,
                 price=low_of_p + abs(center_of_p - low_of_p) * 0.1
             )
+            print(1)
 
         elif predicted_pos == Position.SHORT and self.currently_long:
             self.go_neutral(
@@ -71,6 +75,7 @@ class Strategy(FuturesTrader):
                 prc=100,
                 price=high_of_p - abs(center_of_p - high_of_p) * 0.1
             )
+            print(2)
 
         elif predicted_pos == Position.LONG and not self.currently_long:
             self.strategy["invest"] = self.get_max_invest() / 10
@@ -85,6 +90,7 @@ class Strategy(FuturesTrader):
                 when_prc_reaches=99.0,
                 close_previous=True
             )
+            print(3)
 
         elif predicted_pos == Position.SHORT and not self.currently_short:
             self.strategy["invest"] = self.get_max_invest() / 10
@@ -99,3 +105,4 @@ class Strategy(FuturesTrader):
                 when_prc_reaches=99.0,
                 close_previous=True
             )
+            print(4)

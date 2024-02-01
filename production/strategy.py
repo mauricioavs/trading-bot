@@ -1,4 +1,5 @@
 from futures_trader import FuturesTrader
+from datetime import datetime
 
 
 class Strategy(FuturesTrader):
@@ -17,7 +18,8 @@ class Strategy(FuturesTrader):
     def run_strategy(
         self,
         period_completed: bool,
-        last_price: float
+        last_price: float,
+        date: datetime
     ) -> None:
         """
         Implement this on child class.

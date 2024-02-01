@@ -443,10 +443,11 @@ class FuturesTrader():
         self.data.loc[start_time, col_names] = col_values
         self.run_strategy(
             period_completed=complete,
-            last_price=close
+            last_price=close,
+            date=start_time
         )
         if complete:
-            self.print_message(msg="C", end="", flush=True)
+            self.print_message(msg="C", flush=True)
 
     def cancel_all_open_orders(self):
         """

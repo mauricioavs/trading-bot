@@ -10,6 +10,7 @@ from pickle import load
 import numpy as np
 from keras import Sequential
 from sklearn.preprocessing import StandardScaler
+from datetime import datetime
 
 
 class RNN(BaseModel):
@@ -94,34 +95,52 @@ class RNN(BaseModel):
             predicted_position.reshape(-1, 1)
         )
 
-    def calculate_for_last_row(self) -> None:
+    def calculate_for_row(
+        self,
+        index: datetime
+    ) -> None:
         """
         Calculate just for last row
         """
-        inputs = self.data[-self.timestamps:].copy()[self.columns_to_use]
+        index_num = self.data.index.get_loc(index)
+        print("IDX_NUM1: ", str(index_num))
+        inputs = self.data[index_num+1-self.timestamps:index_num+1].copy()[
+            self.columns_to_use
+        ]
+        print("INPUTS: ")
+        print(inputs)
+        print("SHAPE: ")
+        print(inputs.shape)
         inputs = self.scaler_obj.transform(inputs)
         X = np.array([inputs])
         predicted_position = self.model.predict(X, verbose=0)
-        self.data.loc[self.data.index[-1], self.column_name] = (
+        self.data.loc[index, self.column_name] = (
             self.scaler_obj.inverse_transform(
                 predicted_position.reshape(-1, 1)
             )[0]
         )
+        print("PREDICTION: ")
+        print(self.data.loc[index, self.column_name])
 
     def strategy(
         self,
-        row: int
+        index: datetime
     ) -> Position:
         '''
         Returns predicted position for a row.
         '''
-        if not self.enough_info_to_predict(row=row):
+        idx_num = self.data.index.get_loc(index)
+        print("IDX_NUM2: ", str(idx_num))
+        if not self.enough_info_to_predict(row=idx_num):
             self.last_position = Position.NEUTRAL
             return self.last_position
 
-        current_price = self.data["Close"][row]
-        previous_prediction = self.data[self.column_name][row-1]
-        current_prediction = self.data[self.column_name][row]
+        current_price = self.data["Close"][idx_num]
+        print("CURR_PRICE: ", str(current_price))
+        previous_prediction = self.data[self.column_name][idx_num-1]
+        print("PREV: ", str(previous_prediction))
+        current_prediction = self.data[self.column_name][idx_num]
+        print("CURR_PRED: ", str(current_prediction))
         diff = current_price - previous_prediction
         real_prediction = current_prediction + diff
 
