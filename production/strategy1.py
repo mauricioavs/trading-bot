@@ -9,6 +9,19 @@ class Strategy(FuturesTrader):
     Stores the strategy using
     FuturesTrader methods.
     """
+    def check_stop_market(self):
+        """
+        Try to always have a stop market order.
+        """
+        if self.currently_neutral:
+            print("CURRENTLY_NEUTRAL NO STOP MARKET")
+            return
+        print("BEFORE GO_STOP_MARKET")
+        self.go_stop_market(
+            when_prc_reaches=99.0,
+            cancel_previous=True
+        )
+
     def prepare_strategy(self) -> None:
         """
         Implement this on child class.
@@ -39,6 +52,11 @@ class Strategy(FuturesTrader):
         Runs strategy.
         """
         if not period_completed:
+            self.cron_action(
+                action_id="check_stop_market",
+                wait_seconds=30,
+                function=self.check_stop_market,
+            )
             return
 
         if self.currently_neutral:
@@ -59,7 +77,6 @@ class Strategy(FuturesTrader):
 
         self.strategy["RNN"].calculate_for_row(index=date)
         predicted_pos = self.strategy["RNN"].strategy(index=date)
-        print("PREDICTED_POS: ", predicted_pos)
 
         if predicted_pos == Position.LONG and self.currently_short:
             self.go_neutral(
@@ -86,10 +103,6 @@ class Strategy(FuturesTrader):
                 use_wallet_prc = False,
                 reduceOnly = False,
             )
-            self.go_stop_market(
-                when_prc_reaches=99.0,
-                close_previous=True
-            )
             print(3)
 
         elif predicted_pos == Position.SHORT and not self.currently_short:
@@ -100,9 +113,5 @@ class Strategy(FuturesTrader):
                 quote=self.strategy["invest"],
                 use_wallet_prc = False,
                 reduceOnly = False,
-            )
-            self.go_stop_market(
-                when_prc_reaches=99.0,
-                close_previous=True
             )
             print(4)

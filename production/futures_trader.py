@@ -21,6 +21,8 @@ import requests
 from orders import Position, MIN_ORDERS
 from datetime import datetime
 import json
+from helpers import binance_run
+from typing import Callable, Any
 
 
 class FuturesTrader():
@@ -38,13 +40,13 @@ class FuturesTrader():
     Attributes:
     client: Stores connection
     quote: stores the quote of the pair
-    last_heartbeat: Stores the datetime of last heartbeat
     strategy: Stores the strategy
     stream:
     data: Stores historical candle data
     min_base_open: min base to buy
     strategy: Stores strategy info for message handler.
     history: Saves actions like last orders submitted.
+    crons: stores last time actions were executed.
     """
 
     def __init__(
@@ -63,13 +65,13 @@ class FuturesTrader():
 
         self.client: Client = self.init_client()
         self.quote = self.get_quote_symbol(self.pair)
-        self.last_heartbeat: datetime = datetime.now()
         self.strategy: dict = dict()
         self.stream: UMFuturesWebsocketClient = None
         self.data: pd.DataFrame = None
         self.min_base_open = MIN_ORDERS.get_min_units(self.pair)
         self.strategy = None
         self.history = dict()
+        self.crons = dict()
 
     def init_client(self) -> Client:
         """
@@ -83,6 +85,33 @@ class FuturesTrader():
             tld="com",
             testnet=test
         )
+
+    def cron_action(
+        self,
+        action_id: str,
+        wait_seconds: int,
+        function: Callable[..., Any],
+        *args,
+        **kwargs
+    ) -> Any:
+        """
+        Manages cron actions.
+
+        action_id refers to name of the cron.
+        wait_seconds refers to the time elapsed to
+        run action again.
+        **args and **kwargs are passed directly to
+        function argument.
+        """
+        if not action_id in self.crons.keys():
+            self.crons[action_id] = datetime.min
+        last_executed = self.crons[action_id]
+        time_elapsed = datetime.now() - last_executed
+        if time_elapsed.seconds > wait_seconds:
+            result = function(*args, **kwargs)
+            self.crons[action_id] = datetime.now()
+            return result
+        return None
 
     def print_message(self, msg: str, **kwargs) -> None:
         """
@@ -115,8 +144,9 @@ class FuturesTrader():
         """
         Gets real time position size.
         """
-        infos = self.client.futures_position_information(
-            symbol=self.pair
+        infos = binance_run(
+            function=self.client.futures_position_information,
+            symbol=self.pair 
         )
         response = {
             "size_base": 0,
@@ -184,7 +214,10 @@ class FuturesTrader():
         Gets current quote balance.
         Includes the amount of positions
         """
-        balance = pd.DataFrame(self.client.futures_account_balance())
+        info = binance_run(
+            function=self.client.futures_account_balance
+        )
+        balance = pd.DataFrame(info)
         quote = float(
             balance[balance["asset"] == self.quote].iloc[0]["balance"]
         )
@@ -195,7 +228,10 @@ class FuturesTrader():
         Gets current quote balance.
         Includes just wallet available balance.
         """
-        balance = pd.DataFrame(self.client.futures_account_balance())
+        info = binance_run(
+            function=self.client.futures_account_balance
+        )
+        balance = pd.DataFrame(info)
         quote = float(
             balance[balance["asset"] == self.quote].iloc[0][
                 "availableBalance"
@@ -224,10 +260,12 @@ class FuturesTrader():
         """
         Gets current liquidation price.
         """
+        info = binance_run(
+            function=self.client.futures_position_information,
+            symbol=self.pair
+        )
         liq_price = float(
-            self.client.futures_position_information(
-                symbol=self.pair
-            )[0]["liquidationPrice"]
+            info[0]["liquidationPrice"]
         )
         return liq_price
 
@@ -235,10 +273,12 @@ class FuturesTrader():
         """
         Gets current entry price.
         """
+        info = binance_run(
+            function=self.client.futures_position_information,
+            symbol=self.pair
+        )
         entry_price = float(
-            self.client.futures_position_information(
-                symbol=self.pair
-            )[0]["entryPrice"]
+            info[0]["entryPrice"]
         )
         return entry_price
 
@@ -253,7 +293,8 @@ class FuturesTrader():
         - you can't decrease lev with
             open positions
         """
-        self.client.futures_change_leverage(
+        binance_run(
+            function=self.client.futures_change_leverage,
             symbol=self.pair,
             leverage=new_leverage
         )
@@ -267,12 +308,14 @@ class FuturesTrader():
         now = datetime.utcnow()
         past = str(now - available_periods(num_candles)[interval])
 
-        bars = self.client.futures_historical_klines(
+        bars = binance_run(
+            function=self.client.futures_historical_klines,
             symbol=self.pair.lower(),
             interval=interval,
             start_str=past,
             end_str=None
         )
+
         df = pd.DataFrame(bars)
         df["Date"] = pd.to_datetime(df.iloc[:, 0], unit="ms")
         df.columns = [
@@ -349,26 +392,13 @@ class FuturesTrader():
 
     def send_heartbeat(self) -> None:
         """
-        Send push request to Statuscake url and
-        updates last heartbeat.
+        Send push request to Statuscake url
         """
-        requests.get(url=self.heartbeat_url)
-        self.last_heartbeat = datetime.now()
-
-    def manage_heartbeat(
-        self,
-        current_datetime: datetime
-    ) -> None:
-        """
-        Send requests to Statuscake in order to guarantee
-        that task is still running.
-        """
-        if self.testnet:
+        try:
+            requests.get(url=self.heartbeat_url)
+        except Exception:
             return
-        time_elapsed = current_datetime - self.last_heartbeat
-        if time_elapsed.seconds > self.heartbeat_period:
-            self.send_heartbeat()
-    
+
     def cols_to_use(
         self,
         oopen: float = pd.NA,
@@ -421,8 +451,12 @@ class FuturesTrader():
         TBQAV = float(msg["k"]["Q"])
 
         complete = msg["k"]["x"]
-
-        self.manage_heartbeat(current_datetime=event_time)
+        if not self.testnet:
+            self.cron_action(
+                action_id="heartbeat",
+                wait_seconds=self.heartbeat_period,
+                function=self.send_heartbeat,
+            )
 
         new_row = self.cols_to_use(
             oopen=oopen,
@@ -453,13 +487,17 @@ class FuturesTrader():
         """
         Cancels all open orders
         """
-        self.client.futures_cancel_all_open_orders(symbol=self.pair)
+        binance_run(
+            function=self.client.futures_cancel_all_open_orders,
+            symbol=self.pair
+        )
 
     def cancel_open_order(self, order_id: str):
         """
         Cancels an open order given an order id.
         """
-        self.client.futures_cancel_order(
+        binance_run(
+            function=self.client.futures_cancel_order,
             symbol=self.pair,
             orderId=order_id
         )
@@ -467,12 +505,12 @@ class FuturesTrader():
     def go_stop_market(
         self,
         when_prc_reaches: float = 99.0,
-        close_previous: bool = True
+        cancel_previous: bool = True
     ) -> None:
         """
         Makes a stop market in order to lose less money.
         """
-        if close_previous:
+        if cancel_previous:
             self.close_all_stop_market()
         base = self.get_open_base()
         side = self.get_opposite_position()
@@ -486,6 +524,9 @@ class FuturesTrader():
             entry_price - (when_prc_reaches/100) * rangee,
             1
         )
+        print("ENTRY:", str(entry_price))
+        print("LIQ: ", str(liq_price))
+        print("STOP:", str(stopPrice))
         self.client.futures_create_order(
             stopPrice=stopPrice,
             quantity=base,
@@ -499,7 +540,10 @@ class FuturesTrader():
         """
         Closes all stop market orders
         """
-        open_orders = pd.DataFrame(self.client.futures_get_open_orders())
+        open_orders = binance_run(
+            function=self.client.futures_get_open_orders
+        )
+        open_orders = pd.DataFrame(open_orders)
         if len(open_orders) == 0:
             return
         orders = open_orders[
@@ -514,7 +558,8 @@ class FuturesTrader():
         """
         Gets an order given an id.
         """
-        order = self.client.futures_get_order(
+        order = binance_run(
+            function=self.client.futures_get_order,
             symbol=self.pair, orderId=order_id
         )
         return order
@@ -556,20 +601,23 @@ class FuturesTrader():
 
         match order_type:
             case "MARKET":
-                order_open = self.client.futures_create_order(
+                order_open = binance_run(
+                    function=self.client.futures_create_order,
                     quantity=base,
                     symbol=self.pair,
                     side=side.value,
                     type=order_type,
                     reduceOnly=reduceOnly,
                 )
-                pos_open = self.client.futures_get_order(
+                pos_open = binance_run(
+                    function=self.client.futures_get_order,
                     symbol=self.pair,
                     orderId=order_open["orderId"]
                 )
                 self.history["last_pos_open"] = pos_open["orderId"]
             case "LIMIT":
-                order_open = self.client.futures_create_order(
+                order_open = binance_run(
+                    function=self.client.futures_create_order,
                     quantity=base,
                     price=price,
                     symbol=self.pair,
@@ -580,7 +628,8 @@ class FuturesTrader():
                 )
                 self.history["last_limit_order"] = order_open["orderId"]
             case "TAKE_PROFIT":
-                order_open = self.client.futures_create_order(
+                order_open = binance_run(
+                    function=self.client.futures_create_order,
                     quantity=base,
                     price=price,
                     stopPrice=stopPrice,
