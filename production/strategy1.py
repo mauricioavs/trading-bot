@@ -14,9 +14,7 @@ class Strategy(FuturesTrader):
         Try to always have a stop market order.
         """
         if self.currently_neutral:
-            print("CURRENTLY_NEUTRAL NO STOP MARKET")
             return
-        print("BEFORE GO_STOP_MARKET")
         self.go_stop_market(
             when_prc_reaches=99.0,
             cancel_previous=True
@@ -84,7 +82,6 @@ class Strategy(FuturesTrader):
                 prc=100,
                 price=low_of_p + abs(center_of_p - low_of_p) * 0.1
             )
-            print(1)
 
         elif predicted_pos == Position.SHORT and self.currently_long:
             self.go_neutral(
@@ -92,7 +89,6 @@ class Strategy(FuturesTrader):
                 prc=100,
                 price=high_of_p - abs(center_of_p - high_of_p) * 0.1
             )
-            print(2)
 
         elif predicted_pos == Position.LONG and not self.currently_long:
             self.strategy["invest"] = self.get_max_invest() / 10
@@ -103,7 +99,6 @@ class Strategy(FuturesTrader):
                 use_wallet_prc = False,
                 reduceOnly = False,
             )
-            print(3)
 
         elif predicted_pos == Position.SHORT and not self.currently_short:
             self.strategy["invest"] = self.get_max_invest() / 10
@@ -114,4 +109,3 @@ class Strategy(FuturesTrader):
                 use_wallet_prc = False,
                 reduceOnly = False,
             )
-            print(4)

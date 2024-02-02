@@ -10,4 +10,4 @@ TEST_SECRET_KEY = getenv("TEST_SECRET_KEY")
 
 API_KEY = getenv("API_KEY")
 
-SECRET_KEY = getenv("API_KEY")
+SECRET_KEY = getenv("SECRET_KEY")

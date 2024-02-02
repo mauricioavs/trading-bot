@@ -53,7 +53,7 @@ class FuturesTrader():
         self,
         pair: str,
         heartbeat_url: str,
-        heartbeat_period: int = 300,
+        heartbeat_period: int = 60,
         testnet: bool = True,
         verbose: bool = True
     ) -> None:
