@@ -103,14 +103,9 @@ class RNN(BaseModel):
         Calculate just for last row
         """
         index_num = self.data.index.get_loc(index)
-        print("IDX_NUM1: ", str(index_num))
         inputs = self.data[index_num+1-self.timestamps:index_num+1].copy()[
             self.columns_to_use
         ]
-        print("INPUTS: ")
-        print(inputs)
-        print("SHAPE: ")
-        print(inputs.shape)
         inputs = self.scaler_obj.transform(inputs)
         X = np.array([inputs])
         predicted_position = self.model.predict(X, verbose=0)
@@ -119,8 +114,6 @@ class RNN(BaseModel):
                 predicted_position.reshape(-1, 1)
             )[0]
         )
-        print("PREDICTION: ")
-        print(self.data.loc[index, self.column_name])
 
     def strategy(
         self,
@@ -130,17 +123,13 @@ class RNN(BaseModel):
         Returns predicted position for a row.
         '''
         idx_num = self.data.index.get_loc(index)
-        print("IDX_NUM2: ", str(idx_num))
         if not self.enough_info_to_predict(row=idx_num):
             self.last_position = Position.NEUTRAL
             return self.last_position
 
         current_price = self.data["Close"][idx_num]
-        print("CURR_PRICE: ", str(current_price))
         previous_prediction = self.data[self.column_name][idx_num-1]
-        print("PREV: ", str(previous_prediction))
         current_prediction = self.data[self.column_name][idx_num]
-        print("CURR_PRED: ", str(current_prediction))
         diff = current_price - previous_prediction
         real_prediction = current_prediction + diff
 
