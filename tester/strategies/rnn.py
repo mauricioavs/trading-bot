@@ -88,6 +88,7 @@ class RNN(BaseModel):
         predicted_position = np.concatenate((
             [np.nan]*(self.timestamps-1), self.model.predict(
                 X, verbose=0
+                
             ).flatten()
         ))
         self.data[self.column_name] = self.scaler_obj.inverse_transform(

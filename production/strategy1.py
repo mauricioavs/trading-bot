@@ -36,7 +36,7 @@ class Strategy(FuturesTrader):
         )
         self.strategy["RNN"].load_model()
         self.strategy["RNN"].calculate()
-        self.strategy["invest"] = self.get_max_invest() / 10
+        #self.strategy["invest"] = self.get_max_invest() / 10
 
     def run_strategy(
         self,
