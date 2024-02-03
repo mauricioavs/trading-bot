@@ -119,9 +119,9 @@ class RNN(BaseModel):
             self.last_position = Position.NEUTRAL
             return self.last_position
 
-        current_price = self.data["Close"][row]
-        previous_prediction = self.data[self.column_name][row-1]
-        current_prediction = self.data[self.column_name][row]
+        current_price = self.data.iloc[row]["Close"]
+        previous_prediction = self.data.iloc[row-1][self.column_name]
+        current_prediction = self.data.iloc[row][self.column_name]
         diff = current_price - previous_prediction
         real_prediction = current_prediction + diff
 

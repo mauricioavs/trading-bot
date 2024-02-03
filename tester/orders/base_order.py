@@ -325,6 +325,6 @@ class BaseOrder(BaseModel):
         expected_price = self.expected_entry_price
         match self.position:
             case Position.LONG:
-                return low < expected_price
+                return low <= expected_price
             case Position.SHORT:
-                return high > expected_price
+                return high >= expected_price

@@ -451,12 +451,6 @@ class FuturesTrader():
         TBQAV = float(msg["k"]["Q"])
 
         complete = msg["k"]["x"]
-        if not self.testnet:
-            self.cron_action(
-                action_id="heartbeat",
-                wait_seconds=self.heartbeat_period,
-                function=self.send_heartbeat,
-            )
 
         new_row = self.cols_to_use(
             oopen=oopen,
@@ -482,6 +476,12 @@ class FuturesTrader():
         )
         if complete:
             self.print_message(msg="C", flush=True)
+        if not self.testnet:
+            self.cron_action(
+                action_id="heartbeat",
+                wait_seconds=self.heartbeat_period,
+                function=self.send_heartbeat,
+            )
 
     def cancel_all_open_orders(self):
         """

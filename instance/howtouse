@@ -1,7 +1,6 @@
 this is how files are sent via ssh:
 
-scp -ri keys/europe.pem instance ec2-user@ec2-3-123-18-87.eu-central-1.compute.amazonaws.com:/home/ec2-user
-
+scp -ri keys/europe.pem production ec2-user@ec2-3-64-12-59.eu-central-1.compute.amazonaws.com:/home/ec2-user
 
 to initialize libraries on instance:
 

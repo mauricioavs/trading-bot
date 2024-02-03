@@ -30,9 +30,9 @@ class Strategy(FuturesTrader):
 
         self.strategy["RNN"] = RNN(
             data=self.data,
-            model_dir='strategies/models/simple_current.h5',
-            scaler_dir='strategies/models/scaler.pkl',
-            scaler_obj_dir='strategies/models/scaler_obj.pkl'
+            model_dir='strategies/models/simple_current-feb-2.h5',
+            scaler_dir='strategies/models/scaler-feb-2.pkl',
+            scaler_obj_dir='strategies/models/scaler_obj-feb-2.pkl'
         )
         self.strategy["RNN"].load_model()
         self.strategy["RNN"].calculate()
@@ -76,21 +76,21 @@ class Strategy(FuturesTrader):
         self.strategy["RNN"].calculate_for_row(index=date)
         predicted_pos = self.strategy["RNN"].strategy(index=date)
 
-        if predicted_pos == Position.LONG and self.currently_short:
-            self.go_neutral(
-                order_type="LIMIT",
-                prc=100,
-                price=low_of_p + abs(center_of_p - low_of_p) * 0.1
-            )
+        # if predicted_pos == Position.LONG and self.currently_short:
+        #     self.go_neutral(
+        #         order_type="LIMIT",
+        #         prc=100,
+        #         price=low_of_p + abs(center_of_p - low_of_p) * 0.1
+        #     )
 
-        elif predicted_pos == Position.SHORT and self.currently_long:
-            self.go_neutral(
-                order_type="LIMIT",
-                prc=100,
-                price=high_of_p - abs(center_of_p - high_of_p) * 0.1
-            )
+        # elif predicted_pos == Position.SHORT and self.currently_long:
+        #     self.go_neutral(
+        #         order_type="LIMIT",
+        #         prc=100,
+        #         price=high_of_p - abs(center_of_p - high_of_p) * 0.1
+        #     )
 
-        elif predicted_pos == Position.LONG and not self.currently_long:
+        if predicted_pos == Position.LONG and not self.currently_long:
             self.strategy["invest"] = self.get_max_invest() / 10
             self.go_long(
                 order_type = "LIMIT",

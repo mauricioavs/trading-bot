@@ -126,10 +126,10 @@ class RNN(BaseModel):
         if not self.enough_info_to_predict(row=idx_num):
             self.last_position = Position.NEUTRAL
             return self.last_position
-
-        current_price = self.data["Close"][idx_num]
-        previous_prediction = self.data[self.column_name][idx_num-1]
-        current_prediction = self.data[self.column_name][idx_num]
+        prev_index = self.data.index[idx_num-1]
+        current_price = self.data.loc[index, "Close"]
+        previous_prediction = self.data.loc[prev_index, self.column_name]
+        current_prediction = self.data.loc[index, self.column_name]
         diff = current_price - previous_prediction
         real_prediction = current_prediction + diff
 
