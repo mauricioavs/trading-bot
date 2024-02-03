@@ -91,7 +91,7 @@ class Strategy(FuturesTrader):
         #     )
 
         if predicted_pos == Position.LONG and not self.currently_long:
-            self.strategy["invest"] = self.get_max_invest() / 10
+            self.strategy["invest"] = self.get_max_invest() / 5
             self.go_long(
                 order_type = "LIMIT",
                 price=low_of_p + abs(center_of_p - low_of_p) * 0.1,
@@ -101,7 +101,7 @@ class Strategy(FuturesTrader):
             )
 
         elif predicted_pos == Position.SHORT and not self.currently_short:
-            self.strategy["invest"] = self.get_max_invest() / 10
+            self.strategy["invest"] = self.get_max_invest() / 5
             self.go_short(
                 order_type = "LIMIT",
                 price=high_of_p - abs(center_of_p - high_of_p) * 0.1,

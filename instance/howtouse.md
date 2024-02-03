@@ -51,8 +51,12 @@ run python script:
 tmux new -s script
 python run_bot.py
 
+DONT FORGET TO ACTIVATE STATUSCAKE URL!!!
+
 Now you can disconnect from server. When you want to check the results type:
 tmux a -t script 
+
+
 
 
 
