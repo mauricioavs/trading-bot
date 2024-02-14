@@ -5,7 +5,7 @@ from pydantic import (
     ConfigDict
 )
 import keras
-from typing import List
+from typing import List, Union
 from pickle import load
 import numpy as np
 from keras import Sequential
@@ -97,10 +97,10 @@ class RNN(BaseModel):
 
     def calculate_for_row(
         self,
-        index: datetime
+        index: Union[datetime, pd.Timestamp]
     ) -> None:
         """
-        Calculate just for last row
+        Calculate for row...
         """
         index_num = self.data.index.get_loc(index)
         inputs = self.data[index_num+1-self.timestamps:index_num+1].copy()[
@@ -117,7 +117,7 @@ class RNN(BaseModel):
 
     def strategy(
         self,
-        index: datetime
+        index: Union[datetime, pd.Timestamp]
     ) -> Position:
         '''
         Returns predicted position for a row.

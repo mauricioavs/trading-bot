@@ -5,11 +5,12 @@ from pydantic import (
     ConfigDict
 )
 import keras
-from typing import List
+from typing import List, Union
 from pickle import load
 import numpy as np
 from keras import Sequential
 from sklearn.preprocessing import StandardScaler
+from datetime import datetime
 
 
 class RNN(BaseModel):
@@ -87,23 +88,28 @@ class RNN(BaseModel):
 
         predicted_position = np.concatenate((
             [np.nan]*(self.timestamps-1), self.model.predict(
-                X, verbose=0
-                
+                X, verbose=0    
             ).flatten()
         ))
         self.data[self.column_name] = self.scaler_obj.inverse_transform(
             predicted_position.reshape(-1, 1)
         )
 
-    def calculate_for_last_row(self) -> None:
+    def calculate_for_row(
+        self,
+        index: Union[datetime, pd.Timestamp]
+    ) -> None:
         """
-        Calculate just for last row
+        Calculate for row...
         """
-        inputs = self.data[-self.timestamps:].copy()[self.columns_to_use]
+        index_num = self.data.index.get_loc(index)
+        inputs = self.data[index_num+1-self.timestamps:index_num+1].copy()[
+            self.columns_to_use
+        ]
         inputs = self.scaler_obj.transform(inputs)
         X = np.array([inputs])
         predicted_position = self.model.predict(X, verbose=0)
-        self.data.loc[self.data.index[-1], self.column_name] = (
+        self.data.loc[index, self.column_name] = (
             self.scaler_obj.inverse_transform(
                 predicted_position.reshape(-1, 1)
             )[0]
@@ -111,18 +117,19 @@ class RNN(BaseModel):
 
     def strategy(
         self,
-        row: int
+        index: Union[datetime, pd.Timestamp]
     ) -> Position:
         '''
         Returns predicted position for a row.
         '''
-        if not self.enough_info_to_predict(row=row):
+        idx_num = self.data.index.get_loc(index)
+        if not self.enough_info_to_predict(row=idx_num):
             self.last_position = Position.NEUTRAL
             return self.last_position
-
-        current_price = self.data.iloc[row]["Close"]
-        previous_prediction = self.data.iloc[row-1][self.column_name]
-        current_prediction = self.data.iloc[row][self.column_name]
+        prev_index = self.data.index[idx_num-1]
+        current_price = self.data.loc[index, "Close"]
+        previous_prediction = self.data.loc[prev_index, self.column_name]
+        current_prediction = self.data.loc[index, self.column_name]
         diff = current_price - previous_prediction
         real_prediction = current_prediction + diff
 

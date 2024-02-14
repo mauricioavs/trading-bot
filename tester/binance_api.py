@@ -264,16 +264,16 @@ class BinanceAPI(BaseModel):
 
     def get_nav(
         self,
-        bar: int
+        bar: pd.Series
     ):
         """
         Gets net asset value: Total current balance
         considering open orders notional value in
         certain price and limit orders not executed.
         """
-        low = self.get_value(bar=bar, column="Low")
-        close = self.get_value(bar=bar, column="Close")
-        high = self.get_value(bar=bar, column="High")
+        low = bar["Low"]
+        close = bar["Close"]
+        high = bar["High"]
         inv_quote = self.order_manager.get_invested_margin_and_PnL(
             low=low,
             close=close,
@@ -382,7 +382,7 @@ class BinanceAPI(BaseModel):
     def close_position(
         self,
         quote: float,
-        bar: int,
+        bar: pd.Series,
         use_prc: bool = True,
         order_type: Union[OrderType, str] = OrderType.MARKET,
         expected_exec_quote: float = None
@@ -394,14 +394,14 @@ class BinanceAPI(BaseModel):
             return
 
         if expected_exec_quote is None:
-            expected_exec_quote = self.get_value(bar=bar, column="Close")
+            expected_exec_quote = bar["Close"]
 
         self.submit_order(
-            creation_date=self.get_value(bar=bar, column="Date"),
-            low=self.get_value(bar=bar, column="Low"),
-            close=self.get_value(bar=bar, column="Close"),
+            creation_date=bar["Date"],
+            low=bar["Low"],
+            close=bar["Close"],
             expected_exec_quote=expected_exec_quote,
-            high=self.get_value(bar=bar, column="High"),
+            high=bar["High"],
             quote=quote,
             position=self.order_manager.get_opposite_position,
             order_type=order_type,
@@ -411,7 +411,7 @@ class BinanceAPI(BaseModel):
 
     def go_neutral(
         self,
-        bar: int,
+        bar: pd.Series,
         order_type: Union[OrderType, str] = OrderType.MARKET,
         expected_exec_quote: float = None
     ) -> None:
@@ -430,7 +430,7 @@ class BinanceAPI(BaseModel):
 
     def go_long(
         self,
-        bar: int,
+        bar: pd.Series,
         quote: float,
         expected_exec_quote: float = None,
         wallet_prc: bool = False,
@@ -448,14 +448,14 @@ class BinanceAPI(BaseModel):
             quote = self.wallet.balance * quote / 100
 
         if expected_exec_quote is None:
-            expected_exec_quote = self.get_value(bar=bar, column="Close")
+            expected_exec_quote = bar["Close"]
 
         self.submit_order(
-            creation_date=self.get_value(bar=bar, column="Date"),
-            low=self.get_value(bar=bar, column="Low"),
-            close=self.get_value(bar=bar, column="Close"),
+            creation_date=bar["Date"],
+            low=bar["Low"],
+            close=bar["Close"],
             expected_exec_quote=expected_exec_quote,
-            high=self.get_value(bar=bar, column="High"),
+            high=bar["High"],
             quote=quote,
             position=Position.LONG,
             order_type=order_type,
@@ -465,7 +465,7 @@ class BinanceAPI(BaseModel):
 
     def go_short(
         self,
-        bar: int,
+        bar: pd.Series,
         quote: float,
         expected_exec_quote: float = None,
         wallet_prc: bool = False,
@@ -483,14 +483,14 @@ class BinanceAPI(BaseModel):
             quote = self.wallet.balance * quote / 100
 
         if expected_exec_quote is None:
-            expected_exec_quote = self.get_value(bar=bar, column="Close")
+            expected_exec_quote = bar["Close"]
 
         self.submit_order(
-            creation_date=self.get_value(bar=bar, column="Date"),
-            low=self.get_value(bar=bar, column="Low"),
-            close=self.get_value(bar=bar, column="Close"),
+            creation_date=bar["Date"],
+            low=bar["Low"],
+            close=bar["Close"],
             expected_exec_quote=expected_exec_quote,
-            high=self.get_value(bar=bar, column="High"),
+            high=bar["High"],
             quote=quote,
             position=Position.SHORT,
             order_type=order_type,
@@ -607,7 +607,7 @@ class BinanceAPI(BaseModel):
             quote=returns
         )
 
-    def system_checks(self, bar: int) -> None:
+    def system_checks(self, bar: pd.Series) -> None:
         """
         Makes system checking like liquidation and
         limit order execution.
@@ -626,28 +626,28 @@ class BinanceAPI(BaseModel):
         # si se liquida, tengo que cerrar todas las limit orders
         self.wallet.update_balance(
             quote=self.order_manager.check_liquidation(
-                date=self.get_value(bar=bar, column="Date"),
-                low=self.get_value(bar=bar, column="Low"),
-                high=self.get_value(bar=bar, column="High")
+                date=bar["Date"],
+                low=bar["Low"],
+                high=bar["High"]
             )
         )
         self.wallet.update_balance(
             quote=self.order_manager.check_limit_orders(
-                date=self.get_value(bar=bar, column="Date"),
-                low=self.get_value(bar=bar, column="Low"),
-                close=self.get_value(bar=bar, column="Close"),
-                high=self.get_value(bar=bar, column="High"),
+                date=bar["Date"],
+                low=bar["Low"],
+                close=bar["Close"],
+                high=bar["High"],
             )
         )
         self.wallet.update_balance(
             quote=self.order_manager.check_liquidation(
-                date=self.get_value(bar=bar, column="Date"),
-                low=self.get_value(bar=bar, column="Low"),
-                high=self.get_value(bar=bar, column="High")
+                date=bar["Date"],
+                low=bar["Low"],
+                high=bar["High"]
             )
         )
 
-    def post_system_checks(self, bar: int) -> None:
+    def post_system_checks(self, bar: pd.Series) -> None:
         """
         System checking that runs after strategy.
         """
@@ -676,7 +676,8 @@ class BinanceAPI(BaseModel):
         self.print_message("-" * 75)
 
         strategy = self.prepare_strategy()
-        for bar in range(len(self.data)-1):
+        for index, bar in self.data[:-1].iterrows():
+            bar["Date"] = index
             self.system_checks(bar=bar)
             strategy = self.run_strategy(
                 bar=bar,
@@ -684,15 +685,18 @@ class BinanceAPI(BaseModel):
             )
             self.post_system_checks(bar=bar)
 
-        self.system_checks(bar=bar+1)
+        last_bar = self.data.iloc[-1].copy()
+        last_bar["Date"] = last_bar.name
+
+        self.system_checks(bar=last_bar)
         self.remove_limit_orders()
         self.close_position(
             quote=100.0,
-            bar=bar+1,
+            bar=last_bar,
             use_prc=True,
             order_type=OrderType.MARKET
         )
-        self.post_system_checks(bar=bar+1)
+        self.post_system_checks(bar=last_bar)
         self.print_final_result()
 
         return self.wallet.balance
@@ -751,7 +755,7 @@ class BinanceAPI(BaseModel):
 
     def run_strategy(
         self,
-        bar: int,
+        bar: pd.Series,
         strategy: Any
     ) -> Any:
         """

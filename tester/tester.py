@@ -1,5 +1,6 @@
 from binance_api import BinanceAPI
 from typing import Any
+import pandas as pd
 
 
 class Tester(BinanceAPI):
@@ -15,7 +16,7 @@ class Tester(BinanceAPI):
 
     def run_strategy(
         self,
-        bar: int,
+        bar: pd.Series,
         strategy: Any
     ) -> Any:
         """
