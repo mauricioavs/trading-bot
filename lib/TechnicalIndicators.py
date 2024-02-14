@@ -19,7 +19,7 @@ class SMA():
         self.long = SMA_L
         self.column = column # column to use SMA
         self.default_strategy = default_strategy #strategy to use
-        
+
     def calculate(self, force = False): #calculate for all dataframe
         if not self.SMA_S in self.data.columns or force:
             self.data[self.SMA_S] = self.data[self.column].rolling(self.short).mean()  

@@ -8,7 +8,6 @@ models/
 saved_models/
 *.pickle
 colab/
-data/
 models_work/
 .vscode/
 tester/data/*

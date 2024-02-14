@@ -15,14 +15,14 @@ class Tester(BinanceAPI):
         strategy = dict()
         strategy["RNN"] = RNN(
             data=self.data,
-            model_dir='strategies/models/simple_current-feb-2.h5',
-            scaler_dir='strategies/models/scaler-feb-2.pkl',
-            scaler_obj_dir='strategies/models/scaler_obj-feb-2.pkl'
+            model_dir='strategies/models/close-feb-9.h5',
+            scaler_dir='strategies/models/scaler-feb-9.pkl',
+            scaler_obj_dir='strategies/models/scaler_obj-feb-9.pkl'
         )
         strategy["RNN"].load_model()
         strategy["RNN"].calculate()
         # self.order_manager.change_leverage(5)
-        strategy["pos_hist"] = [Position.NEUTRAL]
+        # strategy["pos_hist"] = [Position.NEUTRAL]
         return strategy
 
     def run_strategy(
@@ -38,60 +38,52 @@ class Tester(BinanceAPI):
         if self.order_manager.currently_neutral:
             self.remove_limit_orders()
 
-        else:
-            self.remove_limit_orders()
-            self.go_neutral(
-               bar=bar,
-               order_type="LIMIT",
-               expected_exec_quote=None
-            )
-            return strategy
-
         period = 12
         center_of_period = self.data[max(0, bar+1-period):bar+1]["Close"].mean()
         low_of_period = min(self.data[max(0, bar+1-period):bar+1]["Low"])
         high_of_period = max(self.data[max(0, bar+1-period):bar+1]["High"])
+
+        # if abs(low_of_period - high_of_period) / center_of_period < 0.01:
+        #     return strategy
+
         predicted_pos = strategy["RNN"].strategy(row=bar)
 
-        # if predicted_pos == Position.LONG and self.order_manager.currently_short:
-        #     self.go_neutral(
-        #         bar=bar,
-        #         order_type="LIMIT",
-        #         expected_exec_quote=low_of_period + abs(center_of_period - low_of_period) * 0.1
-        #     )
-
-        # elif predicted_pos == Position.SHORT and self.order_manager.currently_long:
-        #     self.go_neutral(
-        #         bar=bar,
-        #         order_type="LIMIT",
-        #         expected_exec_quote=high_of_period - abs(center_of_period - high_of_period) * 0.1
-        #     )
-
-        if predicted_pos == Position.LONG and not self.order_manager.currently_long:
+        if predicted_pos == Position.LONG and self.order_manager.currently_neutral:
             # if strategy["pos_hist"][-1] == Position.LONG:
             # self.go_neutral(bar=bar)
-            strategy["invest"] = self.max_invest(consider_closing=False) / 5
+            strategy["invest"] = self.max_invest(consider_closing=False) / 2
             self.go_long(
                 bar=bar,
                 quote=strategy["invest"],
                 wallet_prc=False,
-                go_neutral_first=True,
+                go_neutral_first=False,
                 order_type="LIMIT",
-                expected_exec_quote=low_of_period + abs(center_of_period - low_of_period) * 0.1
-
+                expected_exec_quote=low_of_period + abs(center_of_period - low_of_period) * 0.05
             )
 
-        elif predicted_pos == Position.SHORT and not self.order_manager.currently_short:
+        elif predicted_pos == Position.SHORT and self.order_manager.currently_neutral:
             # if strategy["pos_hist"][-1] == Position.SHORT:
             # self.go_neutral(bar=bar)
-            strategy["invest"] = self.max_invest(consider_closing=False) / 5
+            strategy["invest"] = self.max_invest(consider_closing=False) / 2
             self.go_short(
                 bar=bar,
                 quote=strategy["invest"],
                 wallet_prc=False,
-                go_neutral_first=True,
+                go_neutral_first=False,
                 order_type="LIMIT",
-                expected_exec_quote=high_of_period - abs(center_of_period - high_of_period) * 0.1
+                expected_exec_quote=high_of_period - abs(center_of_period - high_of_period) * 0.05
             )
+        else:
+            self.remove_limit_orders()
+            if self.order_manager.currently_long:
+                execution = high_of_period - abs(center_of_period - high_of_period) * 0.05
+            else:
+                execution= low_of_period + abs(center_of_period - low_of_period) * 0.05
+            self.go_neutral(
+               bar=bar,
+               order_type="LIMIT",
+               expected_exec_quote=execution
+            )
+
         # strategy["pos_hist"].append(predicted_pos)
         return strategy

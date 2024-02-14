@@ -448,6 +448,8 @@ class OrderManager(BaseModel):
                 match position:
                     case Position.LONG:
                         if close <= expected_exec_quote or force_limit:
+                            if not force_limit:
+                                expected_exec_quote = close
                             returns = self.execute_order(
                                 creation_date=creation_date,
                                 execution_date=execution_date,
@@ -461,6 +463,8 @@ class OrderManager(BaseModel):
                             return returns
                     case Position.SHORT:
                         if expected_exec_quote <= close or force_limit:
+                            if not force_limit:
+                                expected_exec_quote = close
                             returns = self.execute_order(
                                 creation_date=creation_date,
                                 execution_date=execution_date,

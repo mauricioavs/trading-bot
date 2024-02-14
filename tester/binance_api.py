@@ -70,7 +70,7 @@ class BinanceAPI(BaseModel):
         api_key=API_KEY,
         api_secret=SECRET_KEY,
         tld="com",
-        testnet=True
+        testnet=False
     )
     wallet: Wallet = Wallet()
     data: pd.DataFrame = None
