@@ -26,6 +26,7 @@ class Tester(BinanceAPI):
         strategy["RNN"].calculate()
         # self.order_manager.change_leverage(5)
         # strategy["pos_hist"] = [Position.NEUTRAL]
+        strategy["invest"] = self.max_invest(consider_closing=False) / 100
         return strategy
 
     def run_strategy(
@@ -55,7 +56,7 @@ class Tester(BinanceAPI):
         if predicted_pos == Position.LONG: #and self.order_manager.currently_neutral:
             # if strategy["pos_hist"][-1] == Position.LONG:
             # self.go_neutral(bar=bar)
-            strategy["invest"] = self.max_invest(consider_closing=False) / 100
+            # strategy["invest"] = self.max_invest(consider_closing=False) / 100
             # self.go_neutral(
             #    bar=bar,
             #    order_type="LIMIT",
@@ -67,13 +68,13 @@ class Tester(BinanceAPI):
                 wallet_prc=False,
                 go_neutral_first=False,
                 order_type="LIMIT",
-                expected_exec_quote=low_of_period + abs(center_of_period - low_of_period) * 0.1
+                expected_exec_quote=bar["Close"]#low_of_period + abs(center_of_period - low_of_period) * 0.1
             )
 
         elif predicted_pos == Position.SHORT: #and self.order_manager.currently_neutral:
             # if strategy["pos_hist"][-1] == Position.SHORT:
             # self.go_neutral(bar=bar)
-            strategy["invest"] = self.max_invest(consider_closing=False) / 100
+            # strategy["invest"] = self.max_invest(consider_closing=False) / 100
             # self.go_neutral(
             #    bar=bar,
             #    order_type="LIMIT",
@@ -85,7 +86,7 @@ class Tester(BinanceAPI):
                 wallet_prc=False,
                 go_neutral_first=False,
                 order_type="LIMIT",
-                expected_exec_quote=high_of_period - abs(center_of_period - high_of_period) * 0.1
+                expected_exec_quote=bar["Close"] #high_of_period - abs(center_of_period - high_of_period) * 0.1
             )
         # else:
         #     self.remove_limit_orders()

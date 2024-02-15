@@ -516,13 +516,14 @@ class OrderManager(BaseModel):
         if use_prc_close:
             reduce_only = True
         returns = 0
+        closed_position = False
         execution_price = self.get_execution_price(
             low=low, high=high, close=close,
             expected_price=expected_execution_price,
             order_type=order_type, position=position
         )
         if self.must_close_open_positions(requested_pos=position):
-
+            closed_position = True
             closed = self.close_position(
                 date=execution_date, quote=quote,
                 order_type=order_type, use_prc=use_prc_close,
@@ -548,7 +549,7 @@ class OrderManager(BaseModel):
         response = order.open_position(
             date=execution_date,
             entry_price=execution_price,
-            fail_silent=False
+            fail_silent=True if closed_position else False
         )
         if not response["valid"]:
             return returns
