@@ -506,21 +506,28 @@ class BinanceAPI(BaseModel):
         bad_orders = 0
         good_orders_prc = 0
         bad_orders_prc = 0
-        liquidated_orders = 0
+        times_liquidated = 0
         paid_fee = 0
         if self.order_manager.closed_orders:
             total_orders = len(self.order_manager.closed_orders)
             good_orders = sum(
-                order.realized_PnL > 0 for order
+                order.realized_PnL_with_fee > 0 for order
                 in self.order_manager.closed_orders
             )
             good_orders_prc = round(good_orders / total_orders * 100, 1)
             bad_orders = total_orders - good_orders
             bad_orders_prc = round(100-good_orders_prc, 1)
-            liquidated_orders = sum(
-                order.liquidated for order
-                in self.order_manager.closed_orders
-            )
+            match self.system:
+                case OrderSystem.NETTING:
+                    times_liquidated = len(
+                        set(
+                            [
+                                order.closed_at[-1] for order
+                                in self.order_manager.closed_orders
+                                if order.liquidated
+                            ]
+                        )
+                    )
             paid_fee = sum(
                 order.realized_fee > 0 for order
                 in self.order_manager.closed_orders
@@ -537,8 +544,8 @@ class BinanceAPI(BaseModel):
                     total_orders
                 )
             )
-            self.print_message("number of liquidated orders = {}".format(
-                    liquidated_orders
+            self.print_message("times liquidated = {}".format(
+                    times_liquidated
                 )
             )
             self.print_message("number of good orders = {} ({}%)".format(

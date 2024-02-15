@@ -10,8 +10,7 @@ from helpers import (
 )
 from pydantic import (
     BaseModel,
-    model_validator,
-    field_validator
+    model_validator
 )
 from typing import List
 from helpers import is_zero, cyan, yellow
@@ -53,13 +52,13 @@ class BaseOrder(BaseModel):
                 This number does not change due to market fluctuations,
                 use notional value instead. Always positive
     margin_quote: Amount spent from my balance
-    opening_fee_quote: Quote spent on opening fee
+    opening_fee_quote: Quote spent on opening fee >= 0
     opened_at: datetime when order was opened
 
     Closing Attributes:
     close_prices: The prices where order partially closed
     closed_size_quotes: List of partially closed quote until reaches size_quote
-    closing_fee_quotes: Quotes spent on closing fees
+    closing_fee_quotes: Quotes spent on closing fees >= 0
     PnLs: Quote profits and losses, this does not include fees
           (opening or closing)
     liquidation_price: Tells if position was liquidated and when
@@ -225,6 +224,16 @@ class BaseOrder(BaseModel):
         fee += self.opening_fee_quote
         fee += sum(self.closing_fee_quotes)
         return fee
+
+    @property
+    def realized_PnL_with_fee(
+        self,
+    ) -> int:
+        """
+        Returns the realized PnL with opening
+        and closing fees
+        """
+        return self.realized_PnL - self.realized_fee
 
     def __repr__(self):
         """
