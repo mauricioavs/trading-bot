@@ -11,6 +11,7 @@ import numpy as np
 from keras import Sequential
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
+import pandas_ta as ta
 
 
 class RNN(BaseModel):
@@ -24,11 +25,17 @@ class RNN(BaseModel):
     model_dir: dir of rnn model
     scaler_dir: dir of data scaler
     scaler_obj_dir: dir of objective scaler
+    strategies_dir: file where strategies array is stored
+    columns_filename_dir: File where columns are stored
+    last_position: stores last position
+    column_name: Column where prediction is saved
 
     Post-Init Attributes:
-    model_name: rnn model
-    scaler_name: data scaler
-    scaler_obj_name: objective scaler
+    model: Architecture of model
+    scaler: data scaler
+    scaler_obj: objective scaler
+    timestamps: Timestamps of model
+    columns_to_use: columns to use of model
 
     """
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -37,14 +44,16 @@ class RNN(BaseModel):
     model_dir: str
     scaler_dir: str
     scaler_obj_dir: str
+    strategies_dir: str = None
+    columns_filename_dir: str = None
     last_position: Position = Position.NEUTRAL
     column_name: str = "rnn"
-    columns_to_use: List[str] = ['Close']
 
     model: Sequential = None
     scaler: StandardScaler = None
     scaler_obj: StandardScaler = None
     timestamps: int = None
+    columns_to_use: List[str] = ['Close']
 
     def load_model(self) -> None:
         """
@@ -57,6 +66,12 @@ class RNN(BaseModel):
         self.scaler = load(open(self.scaler_dir, 'rb'))
         self.scaler_obj = load(open(self.scaler_obj_dir, 'rb'))
         self.timestamps = self.model.layers[0].input_shape[1]
+        if self.strategies_dir:
+            strategies = list(np.load(self.strategies_dir, allow_pickle=True))
+            CustomStrategy = ta.Strategy(name="custom", ta=strategies)
+            self.data.ta.strategy(CustomStrategy)
+        if self.columns_filename_dir:
+            self.columns_to_use = np.load(self.columns_filename_dir)
 
     def enough_info_to_predict(
         self,

@@ -11,7 +11,8 @@ from orders.difficulty import Difficulty
 from helpers import (
     MIN_INVEST_ERROR,
     CANT_CHANGE_LEV,
-    FLUCTUATION_ERROR
+    FLUCTUATION_ERROR,
+    is_zero
 )
 
 
@@ -427,7 +428,7 @@ class OrderManager(BaseModel):
             )
             return 0.0
 
-        if not reduce_only:
+        if not reduce_only and not is_zero(min_quote_invest):
             times_min_quote = quote // (min_quote_invest-1e-12)
             quote = min_quote_invest * times_min_quote
 
