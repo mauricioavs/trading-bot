@@ -373,7 +373,7 @@ class BinanceAPI(BaseModel):
                 use_prc_close=use_prc_close,
                 reduce_only=reduce_only
             )
-            self.wallet.update_balance(margin=returns)
+            self.wallet.update_balance(quote=returns)
             return
 
     def close_position(

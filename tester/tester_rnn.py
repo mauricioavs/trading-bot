@@ -39,8 +39,9 @@ class Tester(BinanceAPI):
 
         Returns strategy.
         """
-        if self.order_manager.currently_neutral:
-            self.remove_limit_orders()
+        self.remove_limit_orders()
+        # if self.order_manager.currently_neutral:
+        #     self.remove_limit_orders()
 
         idx_num = self.data.index.get_loc(bar["Date"])
         period = 168
