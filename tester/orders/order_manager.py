@@ -14,6 +14,7 @@ from helpers import (
     FLUCTUATION_ERROR,
     is_zero
 )
+import random
 
 
 class OrderManager(BaseModel):
@@ -448,7 +449,10 @@ class OrderManager(BaseModel):
             case OrderType.LIMIT:
                 match position:
                     case Position.LONG:
-                        if close <= expected_exec_quote or force_limit:
+                        if force_limit or (
+                            close <= expected_exec_quote and
+                            random.random() < 0.8
+                        ):
                             if not force_limit:
                                 expected_exec_quote = close
                             returns = self.execute_order(
@@ -463,7 +467,10 @@ class OrderManager(BaseModel):
                             )
                             return returns
                     case Position.SHORT:
-                        if expected_exec_quote <= close or force_limit:
+                        if force_limit or (
+                            expected_exec_quote <= close and
+                            random.random() < 0.8
+                        ):
                             if not force_limit:
                                 expected_exec_quote = close
                             returns = self.execute_order(
