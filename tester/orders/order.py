@@ -35,6 +35,7 @@ class Order(BaseOrder):
 
     def get_execution_price(
         self,
+        open: float,
         low: float,
         high: float,
         close: float,
@@ -58,11 +59,12 @@ class Order(BaseOrder):
         Opening LONG: Best execution is low price
         Closing LONG: Best execution is high price
         """
-        if not (low or high or close):
+        if not (open or low or high or close):
             raise ValueError(NOT_PROVIDED_CANDLE)
         if opening_order:
             execution_price = CHAOS.get_execution_price(
                 expected_price=expected_price,
+                open=open,
                 low=low,
                 close=close,
                 high=high,
@@ -79,6 +81,7 @@ class Order(BaseOrder):
 
             execution_price = CHAOS.get_execution_price(
                 expected_price=expected_price,
+                open=open,
                 low=low,
                 close=close,
                 high=high,

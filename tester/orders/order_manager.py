@@ -14,7 +14,6 @@ from helpers import (
     FLUCTUATION_ERROR,
     is_zero
 )
-import random
 
 
 class OrderManager(BaseModel):
@@ -233,6 +232,7 @@ class OrderManager(BaseModel):
 
     def get_execution_price(
         self,
+        open: float,
         low: float,
         high: float,
         close: float,
@@ -252,7 +252,7 @@ class OrderManager(BaseModel):
             date=datetime.now()
         )
         return order.get_execution_price(
-            low=low, high=high, close=close,
+            open=open, low=low, high=high, close=close,
             expected_price=expected_price,
             order_type=order_type,
             opening_order=True
@@ -392,6 +392,7 @@ class OrderManager(BaseModel):
     def submit_order(
         self,
         creation_date: datetime,
+        open: float,
         low: float,
         close: float,
         high: float,
@@ -438,7 +439,7 @@ class OrderManager(BaseModel):
                 returns = self.execute_order(
                     creation_date=creation_date,
                     execution_date=execution_date,
-                    low=low, high=high, close=close,
+                    open=open, low=low, high=high, close=close,
                     quote=quote, order_type=order_type,
                     position=position,
                     expected_execution_price=expected_exec_quote,
@@ -447,43 +448,19 @@ class OrderManager(BaseModel):
                 )
                 return returns
             case OrderType.LIMIT:
-                match position:
-                    case Position.LONG:
-                        if force_limit or (
-                            close <= expected_exec_quote and
-                            random.random() < 0.8
-                        ):
-                            if not force_limit:
-                                expected_exec_quote = close
-                            returns = self.execute_order(
-                                creation_date=creation_date,
-                                execution_date=execution_date,
-                                low=low, high=high, close=close,
-                                quote=quote, order_type=order_type,
-                                position=position,
-                                expected_execution_price=expected_exec_quote,
-                                use_prc_close=use_prc_close,
-                                reduce_only=reduce_only
-                            )
-                            return returns
-                    case Position.SHORT:
-                        if force_limit or (
-                            expected_exec_quote <= close and
-                            random.random() < 0.8
-                        ):
-                            if not force_limit:
-                                expected_exec_quote = close
-                            returns = self.execute_order(
-                                creation_date=creation_date,
-                                execution_date=execution_date,
-                                low=low, high=high, close=close,
-                                quote=quote, order_type=order_type,
-                                position=position,
-                                expected_execution_price=expected_exec_quote,
-                                use_prc_close=use_prc_close,
-                                reduce_only=reduce_only
-                            )
-                            return returns
+                if force_limit:
+                    returns = self.execute_order(
+                        creation_date=creation_date,
+                        execution_date=execution_date,
+                        open=open, low=low, high=high, close=close,
+                        quote=quote, order_type=order_type,
+                        position=position,
+                        expected_execution_price=expected_exec_quote,
+                        use_prc_close=use_prc_close,
+                        reduce_only=reduce_only
+                    )
+                    return returns
+
                 order = self.create_order(
                     quote=quote,
                     expected_execution_price=expected_exec_quote,
@@ -500,6 +477,7 @@ class OrderManager(BaseModel):
         self,
         creation_date: datetime,
         execution_date: datetime,
+        open: float,
         low: float,
         high: float,
         close: float,
@@ -525,7 +503,7 @@ class OrderManager(BaseModel):
         returns = 0
         closed_position = False
         execution_price = self.get_execution_price(
-            low=low, high=high, close=close,
+            open=open, low=low, high=high, close=close,
             expected_price=expected_execution_price,
             order_type=order_type, position=position
         )
@@ -724,6 +702,7 @@ class OrderManager(BaseModel):
     def check_limit_orders(
         self,
         date: datetime,
+        open: float,
         low: float,
         close: float,
         high: float,
@@ -742,6 +721,7 @@ class OrderManager(BaseModel):
                 returns += self.submit_order(
                     creation_date=order.created_at,
                     execution_date=date,
+                    open=open,
                     low=low,
                     close=close,
                     high=high,

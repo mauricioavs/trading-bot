@@ -329,7 +329,7 @@ class BaseOrder(BaseModel):
         high: float
     ) -> bool:
         """
-        Checks if order should be executed.
+        Checks if limit order should be executed.
         """
         expected_price = self.expected_entry_price
         match self.position:
@@ -337,3 +337,25 @@ class BaseOrder(BaseModel):
                 return low <= expected_price
             case Position.SHORT:
                 return high >= expected_price
+
+    def when_execute(
+        self,
+        open: float,
+        low: float,
+        high: float
+    ) -> float:
+        """
+        Checks when limit order should be executed
+        """
+        expected_price = self.expected_entry_price
+        match self.position:
+            case Position.LONG:
+                if open <= expected_price:
+                    return open
+                if low <= expected_price:
+                    return expected_price
+            case Position.SHORT:
+                if open >= expected_price:
+                    return open
+                if high >= expected_price:
+                    return expected_price

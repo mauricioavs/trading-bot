@@ -58,6 +58,7 @@ class TriangularDistribution:
     def get_execution_price(
         self,
         expected_price: float,
+        open: float,
         low: float,
         close: float,
         high: float,
@@ -91,9 +92,15 @@ class TriangularDistribution:
             case OrderType.LIMIT:
                 match position:
                     case Position.LONG:
-                        return expected_price
+                        if open <= expected_price:
+                            return open
+                        if low <= expected_price:
+                            return expected_price
                     case Position.SHORT:
-                        return expected_price
+                        if open >= expected_price:
+                            return open
+                        if high >= expected_price:
+                            return expected_price
 
                 # match position:
                 #     case Position.LONG:

@@ -336,6 +336,7 @@ class BinanceAPI(BaseModel):
     def submit_order(
         self,
         creation_date: datetime,
+        open: float,
         low: float,
         close: float,
         high: float,
@@ -360,6 +361,7 @@ class BinanceAPI(BaseModel):
         ):
             returns = self.order_manager.submit_order(
                 creation_date=creation_date,
+                open=open,
                 low=low,
                 close=close,
                 high=high,
@@ -398,6 +400,7 @@ class BinanceAPI(BaseModel):
 
         self.submit_order(
             creation_date=bar["Date"],
+            open=bar["Open"],
             low=bar["Low"],
             close=bar["Close"],
             expected_exec_quote=expected_exec_quote,
@@ -452,6 +455,7 @@ class BinanceAPI(BaseModel):
 
         self.submit_order(
             creation_date=bar["Date"],
+            open=bar["Open"],
             low=bar["Low"],
             close=bar["Close"],
             expected_exec_quote=expected_exec_quote,
@@ -487,6 +491,7 @@ class BinanceAPI(BaseModel):
 
         self.submit_order(
             creation_date=bar["Date"],
+            open=bar["Open"],
             low=bar["Low"],
             close=bar["Close"],
             expected_exec_quote=expected_exec_quote,
@@ -640,6 +645,7 @@ class BinanceAPI(BaseModel):
         )
         self.wallet.update_balance(
             quote=self.order_manager.check_limit_orders(
+                open=bar["Open"],
                 date=bar["Date"],
                 low=bar["Low"],
                 close=bar["Close"],
