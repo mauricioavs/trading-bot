@@ -43,8 +43,8 @@ CANT_CHANGE_LEV = (
 )
 
 NO_MONEY = (
-    "Can't invest {invest} quote. "
-    "Available balance is {balance}."
+    "Can't withdraw {withdraw} quote from wallet. "
+    "Available balance is {balance}"
 )
 
 MAX_INVEST_ERROR = "Trying to invest: {}. Can't invest more than {}"

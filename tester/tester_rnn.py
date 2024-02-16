@@ -43,7 +43,7 @@ class Tester(BinanceAPI):
             self.remove_limit_orders()
 
         idx_num = self.data.index.get_loc(bar["Date"])
-        period = 24
+        period = 168
         center_of_period = self.data[max(0, idx_num+1-period):idx_num+1]["Close"].mean()
         low_of_period = min(self.data[max(0, idx_num+1-period):idx_num+1]["Low"])
         high_of_period = max(self.data[max(0, idx_num+1-period):idx_num+1]["High"])
@@ -68,7 +68,7 @@ class Tester(BinanceAPI):
                 wallet_prc=False,
                 go_neutral_first=False,
                 order_type="LIMIT",
-                expected_exec_quote=bar["Close"]#low_of_period + abs(center_of_period - low_of_period) * 0.1
+                expected_exec_quote=low_of_period + abs(center_of_period - low_of_period) * 0.1
             )
 
         elif predicted_pos == Position.SHORT: #and self.order_manager.currently_neutral:
@@ -86,7 +86,7 @@ class Tester(BinanceAPI):
                 wallet_prc=False,
                 go_neutral_first=False,
                 order_type="LIMIT",
-                expected_exec_quote=bar["Close"] #high_of_period - abs(center_of_period - high_of_period) * 0.1
+                expected_exec_quote=high_of_period - abs(center_of_period - high_of_period) * 0.1
             )
         # else:
         #     self.remove_limit_orders()

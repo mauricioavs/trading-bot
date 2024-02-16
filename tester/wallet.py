@@ -26,7 +26,7 @@ class Wallet():
         Builds error message
         """
         return NO_MONEY.replace(
-                "{invest}",
+                "{withdraw}",
                 str(quote)
             ).replace(
                 "{balance}",
