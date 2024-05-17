@@ -5,5 +5,5 @@ from .colors import ( # noqa
     cyan,
     yellow
 )
-
+from .weekday import get_weekday # noqa
 from .error_messages import * # noqa

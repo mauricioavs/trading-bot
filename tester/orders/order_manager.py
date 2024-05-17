@@ -120,6 +120,15 @@ class OrderManager(BaseModel):
             return Position.SHORT
         return Position.NEUTRAL
 
+    @property
+    def open_margin_quote(self) -> float:
+        """
+        Gets current invested amount from balance.
+        """
+        return sum(
+            order.open_margin_quote for order in self.open_orders
+        )
+
     def print_message(self, message: str) -> None:
         """
         Prints messages if verbose is True
@@ -192,6 +201,25 @@ class OrderManager(BaseModel):
                 base=order.open_size_base
             )
         return not_val_quote
+
+    def get_PnL(
+        self,
+        price: float
+    ) -> float:
+        """
+        Gets PnL from open orders.
+        This does not include opening
+        or closing fees!
+        """
+        match self.system:
+            case OrderSystem.NETTING:
+                profit = 0
+                for order in self.open_orders:
+                    profit += order.get_PnL(
+                        current_price=price,
+                        quote=order.open_size_quote
+                    )
+                return profit
 
     def get_invested_margin_and_PnL(
         self,
@@ -544,14 +572,6 @@ class OrderManager(BaseModel):
         self.calculate_netting_liquidation()
         return returns
 
-    def get_open_margin_quote(self) -> float:
-        """
-        Gets current invested amount from balance.
-        """
-        return sum(
-            order.open_margin_quote for order in self.open_orders
-        )
-
     def should_netting_liquidate(
         self,
         high: float,
@@ -652,7 +672,7 @@ class OrderManager(BaseModel):
         dir_int = self.open_orders[0].direction_int
         step = 512
         while step >= 0.4:
-            available_quote = self.get_open_margin_quote()
+            available_quote = self.open_margin_quote
             new_nl = netting_liq - step * dir_int
             for order in self.open_orders:
                 if order.should_liquidate(price=new_nl):
