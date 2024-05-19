@@ -15,3 +15,5 @@ tester/.env
 tester/strategies/models/*
 production/strategies/models/*
 production/.env
+.test-venv
+.prod-venv

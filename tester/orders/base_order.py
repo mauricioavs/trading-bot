@@ -167,7 +167,7 @@ class BaseOrder(BaseModel):
         return self.margin_quote + self.opening_fee_quote
 
     @property
-    def is_open(self):
+    def is_open(self) -> bool:
         """
         Tells if order is open
         """
@@ -176,7 +176,7 @@ class BaseOrder(BaseModel):
         return True
 
     @property
-    def is_closed(self):
+    def is_closed(self) -> bool:
         """
         Tells if order is closed
         """
@@ -201,7 +201,7 @@ class BaseOrder(BaseModel):
     @property
     def realized_PnL(
         self,
-    ) -> int:
+    ) -> float:
         """
         Returns the realized PnL
         """
@@ -212,7 +212,7 @@ class BaseOrder(BaseModel):
     @property
     def realized_fee(
         self,
-    ) -> int:
+    ) -> float:
         """
         Returns the realized fee.
 
@@ -228,12 +228,24 @@ class BaseOrder(BaseModel):
     @property
     def realized_PnL_with_fee(
         self,
-    ) -> int:
+    ) -> float:
         """
         Returns the realized PnL with opening
         and closing fees
         """
         return self.realized_PnL - self.realized_fee
+    
+    @property
+    def liquidated_margin(
+        self,
+    ) -> float:
+        """
+        Returns the margin lost of liquidated order,
+        0 instead. Not including opening or closing fees.
+        """
+        if not self.liquidated:
+            return 0
+        return self.PnLs[0]
 
     def __repr__(self):
         """

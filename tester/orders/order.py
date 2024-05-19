@@ -237,6 +237,7 @@ class Order(BaseOrder):
         date: datetime,
         close_price: float,
         close_quote: float,
+        pnl_w_fee: float,
         liquidated: bool = False
     ) -> None:
         """
@@ -247,16 +248,18 @@ class Order(BaseOrder):
                 action = "Buying"
             case Position.LONG:
                 action = "Selling"
+        pnl_w_fee = round(pnl_w_fee, 2)
 
         self.print_message(
-            "{} |  {} ({}{}) {} quote for {}".format(
+            "{} |  {} ({}{}) {} quote for {} (PnL w cl/fee: {})".format(
                 date,
                 action,
                 cyan("liquidating") if liquidated
                 else yellow("closing"),
                 " partially" if self.is_open else "",
                 round(close_quote, 1),
-                round(close_price, 1)
+                round(close_price, 1),
+                green(str(pnl_w_fee)) if pnl_w_fee > 0 else red(str(pnl_w_fee))
             )
         )
 
@@ -351,7 +354,7 @@ class Order(BaseOrder):
         If close_price is not provided, one is calculated using
         expected_close_price
 
-        Returns my invested money and PnL.
+        Returns my invested money and PnL with fee.
         """
         if self.is_closed:
             self.print_already_closed()
@@ -395,7 +398,7 @@ class Order(BaseOrder):
             order_type=order_type, print_message=print_message,
             size_quote_closed=self.open_size_quote * prc_closed
         )
-        return margin_quote_close + self.PnLs[-1] - self.closing_fee_quotes[-1]
+        return margin_quote_close, self.PnLs[-1] - self.closing_fee_quotes[-1]
 
     def calculate_liquidation_price(self):
         """

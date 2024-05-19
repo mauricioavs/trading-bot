@@ -87,9 +87,9 @@ six==1.16.0
 stack-data==0.6.3
 tensorboard==2.15.1
 tensorboard-data-server==0.7.2
-tensorflow-cpu==2.15.0.post1
-tensorflow-estimator==2.15.0
-tensorflow-io-gcs-filesystem==0.35.0
+#tensorflow-cpu==2.15.0.post1
+#tensorflow-estimator==2.15.0
+#tensorflow-io-gcs-filesystem==0.35.0
 termcolor==2.4.0
 threadpoolctl==3.2.0
 tornado==6.4

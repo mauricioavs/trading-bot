@@ -322,8 +322,9 @@ class OrderManager(BaseModel):
                 prc_to_close = quote_to_close/invested_not_quote * 100
 
                 total_return = 0
+                total_pnl_w_fee = 0
                 for order in self.open_orders[:]:
-                    total_return += order.close_position(
+                    margin, pnl_w_fee = order.close_position(
                         date=date,
                         order_type=order_type,
                         notional_quote_close=prc_to_close,
@@ -333,6 +334,8 @@ class OrderManager(BaseModel):
                         check_liquidation=False,
                         print_message=False
                     )
+                    total_return += margin + pnl_w_fee
+                    total_pnl_w_fee += pnl_w_fee
                     if order.is_closed:
                         self.open_orders.remove(order)
                         self.closed_orders.append(order)
@@ -347,6 +350,7 @@ class OrderManager(BaseModel):
                     date=date,
                     close_price=close_price,
                     close_quote=quote_to_close,
+                    pnl_w_fee=total_pnl_w_fee,
                     liquidated=False
                 )
 
@@ -613,17 +617,19 @@ class OrderManager(BaseModel):
                 quote_to_close = self.get_invested_not_val_quote(
                     price=liquidation_price
                 )
-
+                total_liq_margin = 0
                 for order in self.open_orders:
                     order.liquidate_position(
                         liquidation_price=liquidation_price,
                         date=date,
                         print_message=False
                     )
+                    total_liq_margin += order.liquidated_margin
                 self.open_orders[0].print_close_message(
                     date=date,
                     close_price=liquidation_price,
                     close_quote=quote_to_close,
+                    pnl_w_fee=total_liq_margin,
                     liquidated=True
                 )
                 self.closed_orders.extend(self.open_orders)
