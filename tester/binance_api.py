@@ -354,6 +354,8 @@ class BinanceAPI(BaseModel):
         Returns the earnings or investment of order
         (could be negative).
         """
+        if use_prc_close:
+            reduce_only = True
         if reduce_only or self.can_invest(
             quote=quote,
             expected_exec_quote=expected_exec_quote,

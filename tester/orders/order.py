@@ -318,14 +318,12 @@ class Order(BaseOrder):
         min_quote_close = self.min_base_open * close_price
         times_min_quote = notional_quote_close//(min_quote_close-1e-12)
         notional_quote_close = min_quote_close * times_min_quote
-
         remaining_open_quote = notional_val_quote - notional_quote_close
-        if remaining_open_quote + 1e-10 < min_quote_close:
+        if remaining_open_quote + 1e-12 < min_quote_close:
             notional_quote_close = notional_val_quote
 
-        if is_zero(notional_quote_close):
+        elif is_zero(notional_quote_close):
             notional_quote_close = min_quote_close
-
         return notional_quote_close
 
     def close_position(

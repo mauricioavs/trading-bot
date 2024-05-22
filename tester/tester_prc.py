@@ -13,7 +13,7 @@ class Tester(BinanceAPI):
         Prepare the strategy and return it.
         """
         strategy = dict()
-        strategy["strategy"] = { 2.5:1, 5: 4, 7.5: 8}
+        strategy["strategy"] = { 2.5: 1, 7.5: 5}
         strategy["min_invest"] = self.max_invest(consider_closing=False) / 100
         strategy["curr_strategy"] = []
         return strategy

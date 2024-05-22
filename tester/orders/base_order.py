@@ -10,7 +10,8 @@ from helpers import (
 )
 from pydantic import (
     BaseModel,
-    model_validator
+    model_validator,
+    PositiveFloat
 )
 from typing import List
 from helpers import is_zero, cyan, yellow
@@ -70,7 +71,7 @@ class BaseOrder(BaseModel):
     """
     verbose: bool
     pair: str
-    expected_quote: float
+    expected_quote: PositiveFloat
     expected_entry_price: float
     position: Position
     leverage: int = 1
@@ -242,6 +243,9 @@ class BaseOrder(BaseModel):
         """
         Returns the margin lost of liquidated order,
         0 instead. Not including opening or closing fees.
+
+        Closing fee is 0, but obviously its included 
+        in all the lost margin.
         """
         if not self.liquidated:
             return 0

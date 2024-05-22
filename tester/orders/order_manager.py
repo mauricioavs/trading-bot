@@ -157,7 +157,7 @@ class OrderManager(BaseModel):
             return 0
 
         order = self.create_order(
-            quote=0,
+            quote=1,
             expected_execution_price=current_quote_val,
             position=Position.LONG,
             order_type=order_type,
@@ -245,6 +245,34 @@ class OrderManager(BaseModel):
                             quote=order.open_size_quote
                         )
                 return total
+    
+    def get_ROI(
+        self,
+        low: float,
+        close: float,
+        high: float
+    ) -> float:
+        """
+        Gets ROI without fee.
+        Returns percentage, for example,
+        100 is 100% ROI.
+        """
+        match self.system:
+            case OrderSystem.NETTING:
+                if self.should_netting_liquidate(
+                    low=low,
+                    high=high
+                ):
+                    return -100
+                margin = 0
+                pnl = 0
+                for order in self.open_orders:
+                    margin += order.open_margin_quote
+                    pnl += order.get_PnL(
+                            current_price=close,
+                            quote=order.open_size_quote
+                        )
+                return pnl/margin * 100
 
     def get_limit_orders_margin(
         self
@@ -273,7 +301,7 @@ class OrderManager(BaseModel):
         Gets first order close price to use generally.
         """
         order = self.create_order(
-            quote=0,
+            quote=1,
             expected_execution_price=expected_price,
             position=position,
             order_type=order_type,
@@ -555,6 +583,9 @@ class OrderManager(BaseModel):
         elif reduce_only:
             return 0
 
+        if quote <= 0:
+            return returns
+        
         order = self.create_order(
             quote=quote,
             expected_execution_price=expected_execution_price,
