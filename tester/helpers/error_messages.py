@@ -47,6 +47,6 @@ NO_MONEY = (
     "Available balance is {balance}"
 )
 
-MAX_INVEST_ERROR = "Trying to invest: {}. Can't invest more than {}"
+MAX_INVEST_ERROR = "Trying to open position size: {}. Can't open more than {}"
 
 REQUIRED_PARAM = "Some required parameter is None"

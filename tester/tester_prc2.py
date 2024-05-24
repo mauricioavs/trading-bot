@@ -13,7 +13,7 @@ class Tester(BinanceAPI):
         Prepare the strategy and return it.
         """
         strategy = dict()
-        strategy["strategy"] = {2.5: 1, 5:3, 7.5: 12}
+        strategy["strategy"] = {7.5: 20}
         strategy["stop"] = False
         return strategy
 
@@ -48,7 +48,7 @@ class Tester(BinanceAPI):
         if not self.order_manager.currently_neutral:
             current_roi = self.order_manager.get_ROI(low=bar["Low"], high=bar["High"], close=bar["Close"])
 
-            if current_roi > 10:
+            if current_roi > 1 or current_roi < -30:
                 strategy["stop"] = 1 if self.order_manager.currently_long else -1
                 self.go_neutral(
                     bar=bar,
@@ -87,6 +87,13 @@ class Tester(BinanceAPI):
             if abs(chg24h) < change_lvl or change_lvl * np.sign(chg24h) in strategy["curr_strategy"]:
                 continue
             strategy["curr_strategy"].append( change_lvl * np.sign(chg24h) )
+
+            # if np.sign(chg24h) * np.sign(strategy["curr_strategy"][0]) == -1:
+            #     self.go_neutral(
+            #         bar=bar,
+            #         order_type="LIMIT",
+            #         expected_exec_quote=bar["Close"]
+            #     )
 
             if chg24h > 0:
                 self.go_short(

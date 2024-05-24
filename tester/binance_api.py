@@ -146,7 +146,7 @@ class BinanceAPI(BaseModel):
         filename = "_".join(
             [
                 self.pair,
-                str(interval_of_candles),
+                interval_of_candles,
                 start_date_utc,
                 end_date_utc
             ]
@@ -330,7 +330,6 @@ class BinanceAPI(BaseModel):
                 )
             )
             return False
-
         return True
 
     def submit_order(
@@ -445,7 +444,7 @@ class BinanceAPI(BaseModel):
             self.go_neutral(bar)
 
         if wallet_prc:
-            quote = self.wallet.balance * quote / 100
+            quote = self.wallet.balance * quote * self.order_manager.leverage / 100
 
         if expected_exec_quote is None:
             expected_exec_quote = bar["Close"]
