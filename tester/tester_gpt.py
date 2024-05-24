@@ -45,20 +45,15 @@ class Tester(BinanceAPI):
 
         if percent_change_24h > strategy['percent_change_threshold']:
             # Señal de compra (long) si el cambio porcentual es positivo y no hay posición abierta
-            # if self.order_manager.currently_long and not self.wallet.can_spend(strategy["invest"]/self.order_manager.leverage):
-            #     return strategy
             self.go_long(
                 bar=bar,
                 quote=strategy["invest"],  # Cantidad a invertir en USDT
                 wallet_prc=False,
                 go_neutral_first=False,
                 order_type="MARKET",
-                expected_exec_quote=bar["Close"]
             )
             
         elif percent_change_24h < -strategy['percent_change_threshold']:
-            # if self.order_manager.currently_short and not self.wallet.can_spend(strategy["invest"]/self.order_manager.leverage):
-            #     return strategy
             # Señal de venta (short) si el cambio porcentual es negativo y no hay posición abierta
             self.go_short(
                 bar=bar,
@@ -66,7 +61,6 @@ class Tester(BinanceAPI):
                 wallet_prc=False,
                 go_neutral_first=False,
                 order_type="MARKET",
-                expected_exec_quote=bar["Close"]
             )
 
         return strategy
