@@ -83,11 +83,11 @@ class TriangularDistribution:
             case OrderType.MARKET:
                 match position:
                     case Position.LONG:
-                        worst_execution = high
-                        best_execution = low
+                        worst_execution = min( high, close * 1.01 )
+                        best_execution = max( low, close * 0.99 )
                     case Position.SHORT:
-                        worst_execution = low
-                        best_execution = high
+                        worst_execution = max( low, close * 0.99 )
+                        best_execution = min( high, close * 1.01 )
 
             case OrderType.LIMIT:
                 match position:

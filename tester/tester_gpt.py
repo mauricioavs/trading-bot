@@ -53,7 +53,7 @@ class Tester(BinanceAPI):
                 wallet_prc=False,
                 go_neutral_first=False,
                 order_type="MARKET",
-                expected_exec_quote=bar["High"]
+                expected_exec_quote=bar["Close"]
             )
             
         elif percent_change_24h < -strategy['percent_change_threshold']:
@@ -66,7 +66,7 @@ class Tester(BinanceAPI):
                 wallet_prc=False,
                 go_neutral_first=False,
                 order_type="MARKET",
-                expected_exec_quote=bar["Low"]
+                expected_exec_quote=bar["Close"]
             )
 
         return strategy
