@@ -22,6 +22,7 @@ from helpers import (
 )
 from typing import Union, List, Any
 import matplotlib.pyplot as plt
+from collections import defaultdict
 
 
 class BinanceAPI(BaseModel):
@@ -510,27 +511,36 @@ class BinanceAPI(BaseModel):
         times_liquidated = 0
         paid_fee = 0
         if self.order_manager.closed_orders:
-            total_orders = len(self.order_manager.closed_orders)
+
+            grouped_orders = defaultdict(list)
+            for order in self.order_manager.closed_orders:
+                last_closed_at = order.closed_at[-1]
+                grouped_orders[last_closed_at].append(order)
+
+            summed_realized_PnL = []
+
+            for _, orders in grouped_orders.items():
+                total_realized_PnL_with_fee = sum(order.realized_PnL_with_fee for order in orders)
+                summed_realized_PnL.append(total_realized_PnL_with_fee)
+
+
+            total_orders = len(summed_realized_PnL)
             good_orders = sum(
-                order.realized_PnL_with_fee > 0 for order
-                in self.order_manager.closed_orders
+                pnl > 0 for pnl
+                in summed_realized_PnL
             )
             good_orders_prc = round(good_orders / total_orders * 100, 1)
             bad_orders = total_orders - good_orders
             bad_orders_prc = round(100-good_orders_prc, 1)
             match self.system:
                 case OrderSystem.NETTING:
-                    times_liquidated = len(
-                        set(
-                            [
-                                order.closed_at[-1] for order
-                                in self.order_manager.closed_orders
-                                if order.liquidated
-                            ]
-                        )
-                    )
+                    times_liquidated = 0
+
+                    for last_closed_at, orders in grouped_orders.items():
+                        if orders[0].liquidated:
+                            times_liquidated += 1
             paid_fee = sum(
-                order.realized_fee > 0 for order
+                order.realized_fee for order
                 in self.order_manager.closed_orders
             )
 
