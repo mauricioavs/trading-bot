@@ -22,7 +22,6 @@ from helpers import (
 )
 from typing import Union, List, Any
 import matplotlib.pyplot as plt
-from collections import defaultdict
 
 
 class BinanceAPI(BaseModel):
@@ -512,33 +511,26 @@ class BinanceAPI(BaseModel):
         paid_fee = 0
         if self.order_manager.closed_orders:
 
-            grouped_orders = defaultdict(list)
-            for order in self.order_manager.closed_orders:
-                last_closed_at = order.closed_at[-1]
-                grouped_orders[last_closed_at].append(order)
-
-            summed_realized_PnL = []
-
-            for _, orders in grouped_orders.items():
-                total_realized_PnL_with_fee = sum(order.realized_PnL_with_fee for order in orders)
-                summed_realized_PnL.append(total_realized_PnL_with_fee)
-
-
-            total_orders = len(summed_realized_PnL)
-            good_orders = sum(
-                pnl > 0 for pnl
-                in summed_realized_PnL
-            )
-            good_orders_prc = round(good_orders / total_orders * 100, 1)
-            bad_orders = total_orders - good_orders
-            bad_orders_prc = round(100-good_orders_prc, 1)
             match self.system:
                 case OrderSystem.NETTING:
+
+                    grouped_orders, summed_realized_PnL = self.order_manager.group_orders_by_close_date()
+
+                    total_orders = len(summed_realized_PnL)
+                    good_orders = sum(
+                        pnl > 0 for pnl
+                        in summed_realized_PnL
+                    )
+                    good_orders_prc = round(good_orders / total_orders * 100, 1)
+                    bad_orders = total_orders - good_orders
+                    bad_orders_prc = round(100-good_orders_prc, 1)
+
                     times_liquidated = 0
 
-                    for last_closed_at, orders in grouped_orders.items():
+                    for _, orders in grouped_orders.items():
                         if orders[0].liquidated:
                             times_liquidated += 1
+
             paid_fee = sum(
                 order.realized_fee for order
                 in self.order_manager.closed_orders
@@ -723,7 +715,8 @@ class BinanceAPI(BaseModel):
     def plot_data(
         self,
         cols: Union[List[str], str] = ["Hold Strategy"],
-        show_pos: bool = False
+        show_pos: bool = False,
+        plot_close_dots = True
     ) -> None:
         """
         Plots columns of data
@@ -759,6 +752,20 @@ class BinanceAPI(BaseModel):
                     linewidth=1,
                     label="Strategy" if i == 1 else None
                 )
+        
+        if plot_close_dots:
+            grouped_orders, summed_realized_PnL = self.order_manager.group_orders_by_close_date()
+            colors = []
+
+            for total_realized_PnL_with_fee in summed_realized_PnL:
+                color = 'green' if total_realized_PnL_with_fee >= 0 else 'red'
+                colors.append(color)
+            history_indexes = self.data.index.get_indexer(grouped_orders.keys())
+            plt.scatter(grouped_orders.keys(), np.array(self.wallet.history)[history_indexes], c=colors, s=7)
+
+            plt.scatter([], [], c='green', label='Total order PnL is positive', s=100)
+            plt.scatter([], [], c='red', label='Total order PnL is negative', s=100)
+
         plt.title(self.pair)
         plt.legend(loc="best")
         plt.show()

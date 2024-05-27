@@ -14,6 +14,7 @@ from helpers import (
     FLUCTUATION_ERROR,
     is_zero
 )
+from collections import defaultdict
 
 
 class OrderManager(BaseModel):
@@ -849,3 +850,20 @@ class OrderManager(BaseModel):
                     return False
                 self.leverage = new_lev
                 return True
+
+    def group_orders_by_close_date(self) -> dict:
+        """
+        Groups orders by close date and calculates realized Pnl of 
+        each group
+        """
+        grouped_orders = defaultdict(list)
+        for order in self.closed_orders:
+            last_closed_at = order.closed_at[-1]
+            grouped_orders[last_closed_at].append(order)
+        
+        summed_realized_PnL = []
+
+        for _, orders in grouped_orders.items():
+            total_realized_PnL_with_fee = sum(order.realized_PnL_with_fee for order in orders)
+            summed_realized_PnL.append(total_realized_PnL_with_fee)
+        return grouped_orders, summed_realized_PnL

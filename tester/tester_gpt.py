@@ -15,8 +15,8 @@ class Tester(BinanceAPI):
         strategy = {
             'percent_change_threshold': 0.5,  # Umbral de cambio porcentual para tomar una señal de trading
             'resistance_levels': [10000, 5000, 2500, 1000],  # Niveles de resistencia psicológica
-            'resistance_threshold': 0.25,  # Umbral de distancia porcentual a cada resistencia psicológica
-            'investment_proportions': [0.05, 0.05, 0.05, 0.05],  # Proporciones de inversión según la importancia de la resistencia
+            'resistance_threshold': 0.2,  # Umbral de distancia porcentual a cada resistencia psicológica
+            'investment_proportions': [0.05, 0.04, 0.03, 0.02],  # Proporciones de inversión según la importancia de la resistencia
             'take_profit_threshold': 1  # Umbral de ROI para tomar ganancias y cerrar la posición
         }
         return strategy
@@ -29,7 +29,7 @@ class Tester(BinanceAPI):
             number = abs(price % level)
             if number < level * threshold or number > level * (1-threshold):  # Considerar cerca si está dentro del 1% del nivel de resistencia
                 return proportion
-        return 0.05  # Default proportion if no resistance level is close
+        return 0.01  # Default proportion if no resistance level is close
 
     def check_resistance(self, price: float, resistance_levels: list, threshold: float) -> bool:
         """
@@ -83,7 +83,7 @@ class Tester(BinanceAPI):
         # Estrategia de cambio de 24 horas con resistencias psicológicas
         if (
             percent_change_24h  > strategy['percent_change_threshold'] or
-            (self.order_manager.currently_long and current_roi < -30)
+            (self.order_manager.currently_long and current_roi < 0)
             #self.check_resistance(bar['Close'], strategy['resistance_levels'], strategy['resistance_threshold'])
             #(current_roi == 0 or current_roi < -50)
             #(current_roi == 0 or abs(current_roi) > 60) 
@@ -98,7 +98,7 @@ class Tester(BinanceAPI):
             )
         elif (
             percent_change_24h < -strategy['percent_change_threshold'] or
-            (self.order_manager.currently_short and current_roi < -30)
+            (self.order_manager.currently_short and current_roi < 0)
             #self.check_resistance(bar['Close'], strategy['resistance_levels'], strategy['resistance_threshold'])
             #(current_roi == 0 or current_roi < -50)
             # (current_roi == 0 or abs(current_roi) > 60) 
