@@ -249,7 +249,7 @@ class BaseOrder(BaseModel):
         """
         if not self.liquidated:
             return 0
-        return self.PnLs[0]
+        return self.PnLs[-1]
 
     def __repr__(self):
         """

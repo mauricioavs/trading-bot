@@ -11,6 +11,7 @@ class Tester(BinanceAPI):
     def prepare_strategy(self) -> Any:
         """
         Prepare the strategy and return it.
+        This prepares strategy.
         """
         strategy = dict()
         strategy["strategy"] = {7.5: 20}
@@ -24,6 +25,7 @@ class Tester(BinanceAPI):
     ) -> Any:
         """
         Runs strategy given a bar.
+        Updates strategy for the next execution.
 
         Returns strategy.
         """
@@ -98,7 +100,7 @@ class Tester(BinanceAPI):
             if chg24h > 0:
                 self.go_short(
                     bar=bar,
-                    quote=strategy["min_invest"]*multiplier,
+                    quote=strategy["min_invest"] * multiplier,
                     wallet_prc=False,
                     go_neutral_first=False,
                     order_type="LIMIT",

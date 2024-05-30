@@ -14,34 +14,34 @@ class Tester(BinanceAPI):
         This prepares strategy.
         """
         strategy = {
-            'investment_proportions': [0.08, 0.04, 0.02],  # Proporciones de inversión según la importancia de la resistencia
-            'take_profit_threshold': 30,  # Umbral de ROI para tomar ganancias y cerrar la posición
-            'percent_change_levels': [7.5, 5, 2.5],  # Niveles de cambio porcentual para cierre de posición
-            'percent_change_proximity': 0.05,  # Umbral de proximidad para el cierre basado en el porcentaje de cambio
+            'percent_change_threshold': 0.5,  # Umbral de cambio porcentual para tomar una señal de trading
+            'resistance_levels': [10000, 5000, 2500],  # Niveles de resistencia psicológica
+            'resistance_threshold': 0.2,  # Umbral de distancia porcentual a cada resistencia psicológica
+            'investment_proportions': [0.02, 0.02, 0.02],  # Proporciones de inversión según la importancia de la resistencia
+            'take_profit_threshold': 2,  # Umbral de ROI para tomar ganancias y cerrar la posición
             'wait': 0  # Cantidad de iteraciones a esperar 
         }
         return strategy
 
-    def get_investment_proportion(self, number: float, resistance_levels: list, investment_proportions: list, threshold: float) -> float:
+    def get_investment_proportion(self, price: float, resistance_levels: list, investment_proportions: list, threshold: float) -> float:
         """
-        Get the investment proportion based on the number's proximity to resistance levels.
+        Get the investment proportion based on the price's proximity to resistance levels.
         """
         for level, proportion in zip(resistance_levels, investment_proportions):
-            num = abs(abs(number) - level)
-            if num < level * threshold:  # Considerar cerca si está dentro del threshold% del nivel de resistencia
+            number = abs(price % level)
+            if number < level * threshold or number > level * (1-threshold):  # Considerar cerca si está dentro del 1% del nivel de resistencia
                 return proportion
         return 0.01  # Default proportion if no resistance level is close
 
-    def check_resistance(self, number: float, resistance_levels: list, threshold: float) -> bool:
+    def check_resistance(self, price: float, resistance_levels: list, threshold: float) -> bool:
         """
-        Check if the number is close to any of the resistance levels.
+        Check if the price is close to any of the resistance levels.
         """
         for level in resistance_levels:
-            num = abs(abs(number) - level)
-            if num < level * threshold:  # Considerar cerca si está dentro del threshold% del nivel de resistencia
+            number = abs(price % level)
+            if number < level * threshold or number > level * (1-threshold):  # Considerar cerca si está dentro del 1% del nivel de resistencia
                 return True
         return False
-
 
     def run_strategy(
         self,
@@ -62,20 +62,11 @@ class Tester(BinanceAPI):
         
         # Calcular el cambio porcentual en el precio durante las últimas 24 horas
         percent_change_24h = (bar['Close'] - prev24h_bar['Close']) / prev24h_bar['Close'] * 100
-        # if bar['Close'] > prev24h_bar['Close']:
-        #     percent_change_24h = (bar['High'] - prev24h_bar['Low']) / prev24h_bar['Low'] * 100
-        # else:
-        #     percent_change_24h = (bar['Low'] - prev24h_bar['High']) / prev24h_bar['High'] * 100
 
-        # Criterio de salida basado en el ROI o proximidad al porcentaje de cambio
+        # Criterio de salida basado en el ROI
         if not self.order_manager.currently_neutral:
             current_roi = self.order_manager.get_ROI(low=bar["Low"], high=bar["High"], close=bar["Close"])
-            if (
-                current_roi >= strategy['take_profit_threshold'] or (
-                    current_roi > 10 and
-                    self.check_resistance(percent_change_24h, strategy['percent_change_levels'], strategy['percent_change_proximity'])
-                )
-            ):
+            if current_roi >= strategy['take_profit_threshold']:
                 self.go_neutral(
                     bar=bar,
                     order_type="LIMIT",
@@ -90,26 +81,27 @@ class Tester(BinanceAPI):
             strategy["initial_balance"] = self.wallet.balance
         
         # Obtener la proporción de inversión basada en la proximidad a los niveles de resistencia
-        investment_proportion = self.get_investment_proportion(percent_change_24h, strategy['percent_change_levels'], strategy['investment_proportions'], strategy['percent_change_proximity'])
+        investment_proportion = self.get_investment_proportion(bar['Close'], strategy['resistance_levels'], strategy['investment_proportions'], strategy['resistance_threshold'])
         investment_amount = strategy["units_to_invest"] * investment_proportion
 
-        self.remove_limit_orders() 
         if strategy['wait'] > 0:
             strategy['wait'] -= 1
             return strategy
-  
-        if get_weekday(bar["Date"], as_num=False) in ["Friday", "Saturday", "Sunday"]:
+
+        if get_weekday(bar["Date"], as_num=False) in []:
             return strategy
-     
+        
+        self.remove_limit_orders()
+        
         # Estrategia de cambio de 24 horas con resistencias psicológicas
-        #percent_change_24h < -strategy['percent_change_threshold'] and percent_change_24h > -2.5
         if (
-            self.check_resistance(percent_change_24h, strategy['percent_change_levels'], strategy['percent_change_proximity']) and
-            percent_change_24h < 0
+            (True and  percent_change_24h  > strategy['percent_change_threshold']) or
+            (self.order_manager.currently_long and current_roi < -30)
+            #self.check_resistance(bar['Close'], strategy['resistance_levels'], strategy['resistance_threshold'])
+            #(current_roi == 0 or current_roi < -50)
+            #(current_roi == 0 or abs(current_roi) > 60) 
         ):
-            if self.order_manager.currently_long and self.order_manager.open_margin_quote > strategy["initial_balance"] * 0.05:
-                return strategy
-            if self.order_manager.currently_short and current_roi < 0:
+            if self.order_manager.currently_long and self.order_manager.open_margin_quote > strategy["initial_balance"] * 0.2:
                 return strategy
             # Señal de compra (long) si el cambio porcentual es positivo, no hay resistencia cercana y no hay posición abierta
             self.go_long(
@@ -120,14 +112,15 @@ class Tester(BinanceAPI):
                 order_type="LIMIT",
                 expected_exec_quote=bar["Close"]
             )
-            strategy['wait'] = 12
+            strategy['wait'] = 0
         elif (
-            self.check_resistance(percent_change_24h, strategy['percent_change_levels'], strategy['percent_change_proximity']) and
-            percent_change_24h > 0 and current_roi >= 0
+            (True and percent_change_24h < -strategy['percent_change_threshold']) or
+            (self.order_manager.currently_short and current_roi < -30)
+            #self.check_resistance(bar['Close'], strategy['resistance_levels'], strategy['resistance_threshold'])
+            #(current_roi == 0 or current_roi < -50)
+            # (current_roi == 0 or abs(current_roi) > 60) 
         ):
-            if self.order_manager.currently_short and self.order_manager.open_margin_quote > strategy["initial_balance"] * 0.05:
-                return strategy
-            if self.order_manager.currently_long and current_roi < 0:
+            if self.order_manager.currently_short and self.order_manager.open_margin_quote > strategy["initial_balance"] * 0.2:
                 return strategy
             # Señal de venta (short) si el cambio porcentual es negativo, no hay resistencia cercana y no hay posición abierta
             self.go_short(
@@ -138,6 +131,7 @@ class Tester(BinanceAPI):
                 order_type="LIMIT",
                 expected_exec_quote=bar["Close"]
             )
-            strategy['wait'] = 12
+            strategy['wait'] = 0
+            
 
         return strategy
