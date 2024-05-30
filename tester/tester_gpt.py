@@ -15,7 +15,7 @@ class Tester(BinanceAPI):
         """
         strategy = {
             'investment_proportions': [0.08, 0.04, 0.02],  # Proporciones de inversión según la importancia de la resistencia
-            'take_profit_threshold': 30,  # Umbral de ROI para tomar ganancias y cerrar la posición
+            'take_profit_threshold': 50,  # Umbral de ROI para tomar ganancias y cerrar la posición
             'percent_change_levels': [7.5, 5, 2.5],  # Niveles de cambio porcentual para cierre de posición
             'percent_change_proximity': 0.05,  # Umbral de proximidad para el cierre basado en el porcentaje de cambio
             'wait': 0  # Cantidad de iteraciones a esperar 

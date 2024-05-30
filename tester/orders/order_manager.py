@@ -649,16 +649,13 @@ class OrderManager(BaseModel):
                 quote_to_close = self.get_invested_not_val_quote(
                     price=liquidation_price
                 )
-                print("quote to close: ", str(quote_to_close))
                 total_liq_margin = 0
                 for order in self.open_orders:
-                    print("open size quote:", str(order.open_size_quote))
                     order.liquidate_position(
                         liquidation_price=liquidation_price,
                         date=date,
                         print_message=False
                     )
-                    print("liq_margin:", str(order.liquidated_margin))
                     total_liq_margin += order.liquidated_margin
                 self.open_orders[0].print_close_message(
                     date=date,
