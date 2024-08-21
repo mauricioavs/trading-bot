@@ -1,34 +1,36 @@
 # trading-bot
-This is a cryptocurrencies trading bot built with python
 
+These are simulator and production cryptocurrencies trading bots built with python. These bots work with Futures Binance API.
+The simulator downloads historical data from API, stores on a folder called data and then makes the simulations.
 
+## tester bot of BTCUSDT
 
-# Pipenv (Python runtime)
+In order to run the tester simulator, you should:
 
-Use pipenv in order to use the matched python version inside this project.
+1. Set a virtual environment.
 
-## Install dependencies
+2. Install the dependencies located in tester/requirements.txt.
 
-Note: Make sure you are using pipenv's python binary in your code editor/notebook
+3. Run test_tester.ipynb notebook (if you get an error of folder named data missing, just create one on same directory).
 
-```
-$ pipenv install
-```
+### How to make my strategy?
 
-## Use shell
+1. Make a child class from tester.py inside a new file new_file.py
 
-```
-$ pipenv shell
-```
+2. Implement the methods prepare_strategy and run_strategy from the parent class with your strategy, you can see examples in tester_<placeholder>.py 
 
-## Run script from outside pipenv shell
+3. Run test_tester.ipynb notebook importing your class as first line.
 
-```
-$ pipenv run ls
-```
+### What if I want to test other futures pairs?
 
-## Install new dependency on pipenv
+Currently simulation of other pairs is not available.
 
-```
-pipenv install <package-name>
-```
+## production bot of BTCUSDT
+
+1. Once you have your strategy, copy it to strategy.py file in a new file and overwrite the same methods prepare_strategy and run_strategy from simulation. Notice that instead of a variable storing your strategy (in my case I called the variable "strategy"), now you have to set it as an attribute (in my case "self.strategy") in order to be persistent for class during streaming.
+
+2. Make a statuscake ping URL in order to monitor your online status.
+
+3. Run the bot using run_bot.py (please adjust the init params to your needs).
+
+4. (Optional) If you want to run the bot in EC2 instance, see file ec2_instructions/howtouse.md

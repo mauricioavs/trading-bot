@@ -13,7 +13,7 @@ source ~/.bash_profile
 test:
 pyenv
 
-We install a python version:
+Install a python version:
 
 pyenv install <version>
 pyenv global <version>
@@ -35,7 +35,7 @@ scp -ri keys/europe.pem production ec2-user@ec2-3-67-84-48.eu-central-1.compute.
 move to folder:
 cd production
 
-IMPORTANT: You may have to install packages separately like tensorflow (use version of requirements):
+IMPORTANT: You may have to install big packages separately of requirements.txt like tensorflow due to size caching error of downloading multiple packages at once:
 pip install --no-cache-dir tensorflow-cpu==2.15.0.post1
 
 install the pip packages:
