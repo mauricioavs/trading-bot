@@ -11,7 +11,7 @@ colab/
 models_work/
 .vscode/
 tester/data/*
-!tester//data/.gitkeep
+!tester/data/.gitkeep
 tester/.env
 tester/strategies/models/*
 production/strategies/models/*
