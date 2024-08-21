@@ -11,7 +11,7 @@ In order to run the tester simulator, you should:
 
 2. Install the dependencies located in tester/requirements.txt.
 
-3. Run test_tester.ipynb notebook (if you get an error of folder named data missing, just create one on same directory).
+3. Run test_tester.ipynb notebook (if you get an error of folder named data missing, just create one: tester/data).
 
 ### How to make my strategy?
 
