@@ -27,10 +27,14 @@ Currently simulation of other pairs is not available.
 
 ## production bot of BTCUSDT
 
-1. Once you have your strategy, copy it to strategy.py file in a new file and overwrite the same methods prepare_strategy and run_strategy from simulation. Notice that instead of a variable storing your strategy (in my case I called the variable "strategy"), now you have to set it as an attribute (in my case "self.strategy") in order to be persistent for class during streaming.
+1. Set a virtual environment.
 
-2. Make a statuscake ping URL in order to monitor your online status.
+2. Install the dependencies located in production/requirements.txt.
 
-3. Run the bot using run_bot.py (please adjust the init params to your needs).
+3. Once you have your strategy, copy it to strategy.py file in a new file and overwrite the same methods prepare_strategy and run_strategy from simulation. Notice that instead of a variable storing your strategy (in my case I called the variable "strategy"), now you have to set it as an attribute (in my case "self.strategy") in order to be persistent for class during streaming.
 
-4. (Optional) If you want to run the bot in EC2 instance, see file ec2_instructions/howtouse.md
+4. Make a statuscake ping URL in order to monitor your online status.
+
+5. Run the bot using run_bot.py (please adjust the init params to your needs).
+
+6. (Optional) If you want to run the bot in EC2 instance, see file ec2_instructions/howtouse.md
