@@ -4,6 +4,8 @@ import hashlib
 from typing import Dict, Optional
 import requests
 from binbot.config import Config
+import random
+from urllib.parse import urlencode
 
 
 class BinanceFutures:
@@ -23,10 +25,21 @@ class BinanceFutures:
         self.pause_threshold_used_weight = getattr(cfg, "pause_threshold_used_weight")
         self.pause_seconds_when_near = getattr(cfg, "pause_seconds_when_near")
 
+        # verbose
+        self.verbose = cfg.verbose
+
+        self.cfg = cfg
+
     # signing helpers
     def _sign(self, params: Dict[str, str]) -> Dict[str, str]:
-        qs = "&".join(f"{k}={params[k]}" for k in sorted(params))
-        sig = hmac.new(self.secret, qs.encode(), hashlib.sha256).hexdigest()
+        # Copia para no mutar el original
+        params = dict(params)
+        params["timestamp"] = int(time.time() * 1000)
+
+        # Generar querystring exactamente como se enviará
+        query = urlencode(params, doseq=True)
+        sig = hmac.new(self.secret, query.encode(), hashlib.sha256).hexdigest()
+
         params["signature"] = sig
         return params
 
@@ -36,7 +49,6 @@ class BinanceFutures:
         url = f"{self.base}{path}"
         params = params or {}
         if signed:
-            params.update({"timestamp": int(time.time() * 1000)})
             params = self._sign(params)
 
         last_err = None
@@ -56,7 +68,21 @@ class BinanceFutures:
                 if used >= self.pause_threshold_used_weight:
                     time.sleep(self.pause_seconds_when_near)
 
-                r.raise_for_status()
+                # --- 👇 interceptamos errores Binance antes de raise_for_status ---
+                if r.status_code >= 400:
+                    err_code, err_msg = None, None
+                    try:
+                        data = r.json()
+                        err_code = data.get("code")
+                        err_msg = data.get("msg")
+                    except Exception:
+                        err_msg = r.text
+                    raise requests.HTTPError(
+                        f"Binance error {err_code}: {err_msg} "
+                        f"(HTTP {r.status_code} {r.reason} for {url})",
+                        response=r
+                    )
+
                 return r.json()
 
             except requests.HTTPError as e:
@@ -118,15 +144,29 @@ class BinanceFutures:
         params = {"symbol": symbol} if symbol else {}
         return self._get("/fapi/v1/openOrders", params, signed=True)
 
+    def leverage_bracket(self, symbol: str):
+        return self._get("/fapi/v1/leverageBracket", {"symbol": symbol}, signed=True)
+
     def set_isolated_and_leverage(self, symbol: str, leverage: int):
-        # set isolated
+        """
+        1) Cambia el margin type del símbolo a ISOLATED (idempotente).
+        2) Ajusta el leverage al valor solicitado (sin clamps ni lógica extra).
+        """
+        # 1) marginType ISOLATED
         try:
             self._post("/fapi/v1/marginType", {"symbol": symbol, "marginType": "ISOLATED"})
         except requests.HTTPError as e:
-            if e.response is None or e.response.status_code != 400:
+            # Binance devuelve 400 con code -4046 si ya está en ISOLATED
+            try:
+                data = e.response.json()
+                if data.get("code") != -4046:
+                    raise
+            except Exception:
+                # si no podemos parsear o no es -4046, relanzamos
                 raise
-        # set leverage
-        self._post("/fapi/v1/leverage", {"symbol": symbol, "leverage": str(leverage)})
+
+        # 2) set leverage solicitado
+        return self._post("/fapi/v1/leverage", {"symbol": symbol, "leverage": str(leverage)})
 
     def place_order(self, symbol: str, side: str, type_: str, quantity: str,
                     price: Optional[str]=None, time_in_force: Optional[str]=None,
