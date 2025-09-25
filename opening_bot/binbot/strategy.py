@@ -8,6 +8,7 @@ from .indicators import build_ohlcv, atr_percent, three_day_levels
 from .sizing import compute_qty
 from .filters import passes_listing_age, passes_volume
 from binbot.timeutil import candles_needed, now_utc
+from binbot.config import Config
 
 
 @dataclass
@@ -29,18 +30,18 @@ def fetch_ohlcv(client, symbol: str, interval: str, days_lookback: int, now_utc_
 
 
 def decide_orders_for_symbol(*, client, symbol: str, sym_filters: dict, last_open_iso_by_symbol: Dict[str,str],
-                             tdf: pd.DataFrame, equity: float, cfg) -> List[PlannedOrder]:
+                             tdf: pd.DataFrame, equity: float, cfg: Config) -> List[PlannedOrder]:
 
     # Basic filters
     last_iso = last_open_iso_by_symbol.get(symbol)
     if last_iso:
         last_dt = datetime.fromisoformat(last_iso)
         hours_since = (now_utc() - last_dt).total_seconds() / 3600.0
-        if hours_since < cfg.cooldown_hours:
+        if hours_since < cfg.order_cooldown_hours:
             if cfg.verbose:
                 print(
                     f"  - SKIP cooldown: last opened {symbol} {hours_since:.1f}h ago "
-                    f"(min {cfg.cooldown_hours}h required)"
+                    f"(min {cfg.order_cooldown_hours}h required)"
                 )
             return []
 
@@ -136,18 +137,32 @@ def decide_orders_for_symbol(*, client, symbol: str, sym_filters: dict, last_ope
     def round_tick(x: float) -> float:
         return math.floor(x / tick) * tick
 
-    qty = compute_qty(price=last, equity=equity, leverage=cfg.default_leverage,
-                      margin_pct=cfg.margin_pct, step=step, min_qty=min_qty)
-    if qty <= 0:
-        return []
-
     out: List[PlannedOrder] = []
     if chosen_side == "hi":
-        price = round_tick(hi * (1 - cfg.offset_from_level_pct/100))
-        out.append(PlannedOrder(symbol, "SELL", "LIMIT", qty, price, "GTC",
+        # precio límite para short: un poco debajo del high previo
+        price_plan = round_tick(hi * (1 - cfg.offset_from_level_pct/100))
+
+        qty = compute_qty(price=price_plan, equity=equity,
+                        leverage=cfg.default_leverage, margin_pct=cfg.margin_pct,
+                        step=step, min_qty=min_qty)
+        if qty <= 0:
+            if cfg.verbose: print("  - SKIP sizing: qty <= 0 (short)")
+            return []
+
+        out.append(PlannedOrder(symbol, "SELL", "LIMIT", qty, price_plan, "GTC",
                                 f"short near high {hi:.4f}"))
-    if chosen_side == "lo":
-        price = round_tick(lo * (1 + cfg.offset_from_level_pct/100))
-        out.append(PlannedOrder(symbol, "BUY", "LIMIT", qty, price, "GTC",
+
+    elif chosen_side == "lo":
+        # precio límite para long: un poco encima del low previo
+        price_plan = round_tick(lo * (1 + cfg.offset_from_level_pct/100))
+
+        qty = compute_qty(price=price_plan, equity=equity,
+                        leverage=cfg.default_leverage, margin_pct=cfg.margin_pct,
+                        step=step, min_qty=min_qty)
+        if qty <= 0:
+            if cfg.verbose: print("  - SKIP sizing: qty <= 0 (long)")
+            return []
+
+        out.append(PlannedOrder(symbol, "BUY", "LIMIT", qty, price_plan, "GTC",
                                 f"long near low {lo:.4f}"))
     return out
