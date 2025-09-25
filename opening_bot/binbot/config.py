@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta, timezone
 from binbot.timeutil import parse_hm
 from dotenv import load_dotenv
@@ -11,8 +11,8 @@ load_dotenv()
 class Config:
     # API / endpoints
     base_url: str = os.getenv("BINANCE_FAPI_BASE", "https://fapi.binance.com")
-    api_key: str = os.getenv("BINANCE_API_KEY", "")
-    api_secret: str = os.getenv("BINANCE_API_SECRET", "")
+    api_key: str = field(default_factory=lambda: os.getenv("BINANCE_API_KEY", ""), repr=False)
+    api_secret: str = field(default_factory=lambda: os.getenv("BINANCE_API_SECRET", ""), repr=False)
 
     # Behavior
     dry_run: bool = os.getenv("DRY_RUN", "true").lower() == "true"
