@@ -16,5 +16,7 @@ tester/.env
 tester/strategies/models/*
 production/strategies/models/*
 production/.env
+opening\ bot/.env
 .test-venv
 .prod-venv
+.opening_venv

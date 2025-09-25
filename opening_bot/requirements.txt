@@ -1,0 +1,7 @@
+requests
+pydantic
+python-dotenv
+pandas
+numpy
+matplotlib
+matplotlib-inline
