@@ -20,4 +20,3 @@ production/.env
 .prod-venv
 .opening_venv
 opening_bot/.env
-opening_bot/.env.example
