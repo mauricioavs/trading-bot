@@ -1,52 +1,34 @@
 import time
 import pandas as pd
-
+import traceback
 from .config import Config
 from .client import BinanceFutures
 from .state import BotState
-from .filters import load_symbol_filters, passes_listing_age, passes_volume
+from .filters import load_symbol_filters
 from .strategy import decide_orders_for_symbol
 from .timeutil import now_utc, within_trading_window
-from .housekeeping import cancel_stale_orders
+from .housekeeping import (
+    cancel_stale_orders,
+    get_equity_usdt,
+    symbol_universe,
+    get_active_counts,
+    ensure_protective_stops
+)
 import random
-
-
-def get_active_counts(client: BinanceFutures) -> tuple[int, int, int]:
-    orders = client.open_orders()
-    filtered_orders = [
-        o for o in orders
-        if o.get("type") not in {
-            "STOP", "STOP_MARKET", "TAKE_PROFIT", "TAKE_PROFIT_MARKET", "TRAILING_STOP_MARKET"
-        }
-    ]
-    positions = client.position_risk()
-    open_pos = [p for p in positions if float(p.get("positionAmt", "0")) != 0.0]
-
-    return len(filtered_orders), len(open_pos), len(filtered_orders) + len(open_pos)
-
-
-def get_equity_usdt(client: BinanceFutures) -> float:
-    acct = client.account()
-    return float(acct.get("totalWalletBalance", "0"))
-
-
-def symbol_universe(client: BinanceFutures, cfg: Config) -> list[str]:
-    if cfg.symbols_whitelist:
-        return list(cfg.symbols_whitelist)
-    tickers = client.ticker_24h()
-    tdf = pd.DataFrame(tickers)
-    tdf = tdf[(tdf["symbol"].str.endswith("USDT"))]
-    tdf["quoteVolume"] = pd.to_numeric(tdf["quoteVolume"], errors="coerce")
-    tdf = tdf.sort_values("quoteVolume", ascending=False).head(cfg.universe_size)
-    return tdf["symbol"].tolist()
+from datetime import datetime
 
 
 def run_loop_once(cfg: Config, client: BinanceFutures, state: BotState, log_fn=print):
     # housekeeping: cancel orders older than 24h
+    if cfg.verbose:
+        now_local = datetime.now(cfg.tz_local).strftime("%Y-%m-%d %H:%M:%S %Z%z")
+        log_fn(f"[{now_local}] --- run_loop_once ---")
+
     cancel_stale_orders(client, cfg.max_order_age_hours, cfg.dry_run, log_fn)
 
     if not within_trading_window(now_utc(), cfg.tz_local, cfg.window_start_hm, cfg.window_end_hm):
-        log_fn("Outside trading window; skip.")
+        if cfg.verbose:
+            log_fn("Outside trading window; skip.")
         return
 
     sym_filters = load_symbol_filters(client.exchange_info())
@@ -56,11 +38,13 @@ def run_loop_once(cfg: Config, client: BinanceFutures, state: BotState, log_fn=p
 
     open_orders, open_positions, total_active = get_active_counts(client)
     if total_active >= cfg.max_active_slots:
-        log_fn(f"Capacity reached ({total_active}/{cfg.max_active_slots}); skip.")
+        if cfg.verbose:
+            log_fn(f"Capacity reached ({total_active}/{cfg.max_active_slots}); skip.")
         return
 
     equity = get_equity_usdt(client)
-    log_fn(f"Equity: {equity:.2f} | Active: orders={open_orders} positions={open_positions}")
+    if cfg.verbose:
+        log_fn(f"Equity: {equity:.2f} | Active: orders={open_orders} positions={open_positions}")
 
     universe = symbol_universe(client, cfg)
 
@@ -89,7 +73,7 @@ def run_loop_once(cfg: Config, client: BinanceFutures, state: BotState, log_fn=p
                     client.set_isolated_and_leverage(symbol, cfg.default_leverage)
                     res = client.place_order(symbol, od.side, od.type, f"{od.quantity}",
                                              price=(f"{od.price:.8f}" if od.price else None),
-                                             time_in_force=od.time_in_force)
+                                             time_in_force=od.time_in_force, sym_filters=sym_filters)
                     log_fn(f"ORDER OK: {res}")
                     from .timeutil import now_utc as _now
                     state.last_open_iso_by_symbol[symbol] = _now().isoformat()
@@ -103,9 +87,44 @@ def run_loop_once(cfg: Config, client: BinanceFutures, state: BotState, log_fn=p
 def run_loop(cfg: Config):
     client = BinanceFutures(cfg)
     state = BotState.load(cfg.state_path)
+
+    last_scan_ts = 0.0
+    # fuerza que la primera vez siempre ejecute stops también
+    state.last_stops_check_ts = 0.0
+    state.save(cfg.state_path)
+
+    print("Starting run_loop… (Ctrl+C para detener)")
     try:
         while True:
-            run_loop_once(cfg, client, state, print)
-            time.sleep(cfg.scan_interval_sec)
+            now = time.time()
+
+            # 1) ¿toca scan de señales?
+            if now - last_scan_ts >= cfg.scan_interval_sec:
+                try:
+                    run_loop_once(cfg, client, state, log_fn=print)
+                except Exception as e:
+                    print(f"[scan] ERROR: {e}")
+                    traceback.print_exc()
+                finally:
+                    last_scan_ts = now
+
+            # 2) ¿toca revisar/colocar stops protectores?
+            if now - state.last_stops_check_ts >= cfg.stops_check_interval_sec:
+                try:
+                    # prepara filtros/ticks una sola vez si no los tienes a mano
+                    sym_filters = load_symbol_filters(client.exchange_info())
+                    ensure_protective_stops(cfg, client, state, sym_filters, log_fn=print)
+                except Exception as e:
+                    print(f"[stops] ERROR: {e}")
+                    traceback.print_exc()
+                finally:
+                    state.last_stops_check_ts = now
+                    state.save(cfg.state_path)
+
+            # duerme el mínimo necesario para mantener responsivo el scheduler
+            next_scan_due = (last_scan_ts + cfg.scan_interval_sec) - now
+            next_stops_due = (state.last_stops_check_ts + cfg.stops_check_interval_sec) - now
+            sleep_s = max(0.3, min(next_scan_due, next_stops_due, 1.0))  # duerme cortito (≤1s)
+            time.sleep(sleep_s + random.uniform(0, 0.2))
     except KeyboardInterrupt:
         print("Shutting down…")

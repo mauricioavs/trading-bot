@@ -6,6 +6,15 @@ import requests
 from binbot.config import Config
 import random
 from urllib.parse import urlencode
+from decimal import Decimal
+import math
+
+
+def _cut_decimals(val: float|str, tick_size: float) -> str:
+    """Recorta decimales según tick_size sin redondear."""
+    tick_decimals = abs(Decimal(str(tick_size)).as_tuple().exponent)
+    factor = 10 ** tick_decimals
+    return f"{math.floor(float(val) * factor) / factor:.{tick_decimals}f}"
 
 
 class BinanceFutures:
@@ -169,13 +178,26 @@ class BinanceFutures:
         return self._post("/fapi/v1/leverage", {"symbol": symbol, "leverage": str(leverage)})
 
     def place_order(self, symbol: str, side: str, type_: str, quantity: str,
-                    price: Optional[str]=None, time_in_force: Optional[str]=None,
-                    reduce_only: Optional[str]=None, stop_price: Optional[str]=None):
+                price: Optional[str]=None, time_in_force: Optional[str]=None,
+                reduce_only: Optional[str]=None, stop_price: Optional[str]=None,
+                close_position: Optional[bool]=None, working_type: Optional[str]=None,
+                sym_filters: Optional[dict]=None):
+        if sym_filters is not None and symbol in sym_filters:
+            f = sym_filters[symbol]
+            if quantity is not None:
+                quantity = _cut_decimals(quantity, f["stepSize"])
+            if price is not None:
+                price = _cut_decimals(price, f["tickSize"])
+            if stop_price is not None:
+                stop_price = _cut_decimals(stop_price, f["tickSize"])
+
         p = {"symbol": symbol, "side": side, "type": type_, "quantity": quantity}
         if price: p["price"] = price
         if time_in_force: p["timeInForce"] = time_in_force
         if reduce_only: p["reduceOnly"] = reduce_only
         if stop_price: p["stopPrice"] = stop_price
+        if close_position is not None: p["closePosition"] = "true" if close_position else "false"
+        if working_type: p["workingType"] = working_type  # "MARK_PRICE" o "CONTRACT_PRICE"
         return self._post("/fapi/v1/order", p)
 
     def cancel_order(self, symbol: str, order_id: int|str):

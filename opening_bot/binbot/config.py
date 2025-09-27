@@ -38,9 +38,16 @@ class Config:
     order_cooldown_hours: int = int(os.getenv("COOLDOWN_HOURS", "24")) # hours to make another order of same symnol
     range_exclude_recent_bars: int = int(os.getenv("RANGE_EXCLUDE_RECENT_BARS", "0")) # exludes most recent N bars from low and high calc, in order to skip tendencies
 
+    # Set SL orders near liquidation price to save money
+    stop_near_liq_buffer_pct: float = float(os.getenv("STOP_NEAR_LIQ_BUFFER_PCT", "0.20"))  # 0.20% por defecto
+    stop_working_type: str = os.getenv("STOP_WORKING_TYPE", "MARK_PRICE")  # recomendado MARK_PRICE
+    stops_check_interval_sec: int = int(os.getenv("STOPS_CHECK_INTERVAL_SEC", "300"))
+    stops_retry_cooldown_sec: int = int(os.getenv("STOPS_RETRY_COOLDOWN_SEC", "180"))
+
     # Universe
     universe_size: int = int(os.getenv("UNIVERSE_SIZE", "40"))
     symbols_whitelist: tuple[str, ...] = tuple(s.strip() for s in os.getenv("SYMBOLS_WHITELIST", "").split(",") if s.strip())
+    symbols_blacklist: tuple[str, ...] = tuple(s.strip() for s in os.getenv("SYMBOLS_BLACKLIST", "").split(",") if s.strip())
 
     # Time window (fixed UTC-6 requested)
     tz_local: timezone = timezone(-timedelta(hours=int(os.getenv("TZ_OFFSET_HOURS", "6"))))
