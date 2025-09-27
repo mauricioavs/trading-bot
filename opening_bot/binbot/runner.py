@@ -21,6 +21,7 @@ from datetime import datetime
 def run_loop_once(cfg: Config, client: BinanceFutures, state: BotState, log_fn=print):
     # housekeeping: cancel orders older than 24h
     if cfg.verbose:
+        start_ts = time.time()
         now_local = datetime.now(cfg.tz_local).strftime("%Y-%m-%d %H:%M:%S %Z%z")
         log_fn(f"[{now_local}] --- run_loop_once ---")
 
@@ -83,6 +84,11 @@ def run_loop_once(cfg: Config, client: BinanceFutures, state: BotState, log_fn=p
 
         time.sleep(random.uniform(cfg.per_symbol_delay_min, cfg.per_symbol_delay_max))
 
+    if cfg.verbose:
+        end_local = datetime.now(cfg.tz_local).strftime("%Y-%m-%d %H:%M:%S %Z%z")
+        elapsed = time.time() - start_ts
+        log_fn(f"[{end_local}] --- run_loop_once END --- (took {elapsed:.2f}s)")
+
 
 def run_loop(cfg: Config):
     client = BinanceFutures(cfg)
@@ -96,20 +102,18 @@ def run_loop(cfg: Config):
     print("Starting run_loop… (Ctrl+C para detener)")
     try:
         while True:
-            now = time.time()
-
             # 1) ¿toca scan de señales?
-            if now - last_scan_ts >= cfg.scan_interval_sec:
+            if time.time() - last_scan_ts >= cfg.scan_interval_sec:
                 try:
                     run_loop_once(cfg, client, state, log_fn=print)
                 except Exception as e:
                     print(f"[scan] ERROR: {e}")
                     traceback.print_exc()
                 finally:
-                    last_scan_ts = now
+                    last_scan_ts = time.time()
 
             # 2) ¿toca revisar/colocar stops protectores?
-            if now - state.last_stops_check_ts >= cfg.stops_check_interval_sec:
+            if time.time() - state.last_stops_check_ts >= cfg.stops_check_interval_sec:
                 try:
                     # prepara filtros/ticks una sola vez si no los tienes a mano
                     sym_filters = load_symbol_filters(client.exchange_info())
@@ -118,12 +122,12 @@ def run_loop(cfg: Config):
                     print(f"[stops] ERROR: {e}")
                     traceback.print_exc()
                 finally:
-                    state.last_stops_check_ts = now
+                    state.last_stops_check_ts = time.time()
                     state.save(cfg.state_path)
 
             # duerme el mínimo necesario para mantener responsivo el scheduler
-            next_scan_due = (last_scan_ts + cfg.scan_interval_sec) - now
-            next_stops_due = (state.last_stops_check_ts + cfg.stops_check_interval_sec) - now
+            next_scan_due = (last_scan_ts + cfg.scan_interval_sec) - time.time()
+            next_stops_due = (state.last_stops_check_ts + cfg.stops_check_interval_sec) - time.time()
             sleep_s = max(0.3, min(next_scan_due, next_stops_due, 1.0))  # duerme cortito (≤1s)
             time.sleep(sleep_s + random.uniform(0, 0.2))
     except KeyboardInterrupt:

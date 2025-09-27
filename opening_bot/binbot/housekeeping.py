@@ -1,5 +1,5 @@
 from datetime import timedelta, datetime
-from time import time as _now
+import time
 from .timeutil import now_utc
 from binbot.client import BinanceFutures
 from binbot.config import Config
@@ -119,108 +119,110 @@ def plan_stop_near_liq(side_entry: str, liq_price: float, tick: float, buffer_pc
 
 def ensure_protective_stops(cfg: Config, client: BinanceFutures, state: BotState, sym_filters, log_fn=print):
     """Una sola llamada a positionRisk y una a openOrders para cubrir todas las posiciones."""
-    try:
-        if cfg.verbose:
-            now_local = datetime.now(cfg.tz_local).strftime("%Y-%m-%d %H:%M:%S %Z")
-            log_fn(f"[{now_local}] --- ensure_protective_stops ---")
+    if cfg.verbose:
+        start_ts = time.time()
+        now_local = datetime.now(cfg.tz_local).strftime("%Y-%m-%d %H:%M:%S %Z")
+        log_fn(f"[{now_local}] --- ensure_protective_stops ---")
 
-        risks = client.position_risk()          # todas las posiciones
-        all_open_orders = client.open_orders()  # todas las órdenes abiertas
+    risks = client.position_risk()          # todas las posiciones
+    all_open_orders = client.open_orders()  # todas las órdenes abiertas
 
-        seen = 0
-        with_pos = 0
-        no_liq = 0
-        already = 0
-        cooldown = 0
-        placed = 0
-        skipped_missing_tick = 0
+    seen = 0
+    with_pos = 0
+    no_liq = 0
+    already = 0
+    cooldown = 0
+    placed = 0
+    skipped_missing_tick = 0
 
-        for r in risks:
-            seen += 1
-            symbol = r.get("symbol")
-            try:
-                amt = float(r.get("positionAmt", "0") or 0.0)
-                liq = float(r.get("liquidationPrice", "0") or 0.0)
-            except (ValueError, TypeError) as e:
-                if cfg.verbose:
-                    log_fn(f"[stops] {symbol}: SKIP (bad numeric parse: {e})")
-                continue
-            if amt == 0.0:
-                # this is commented bcs it prints all the symbols with no positions
-                # if cfg.verbose:
-                #     log_fn(f"[stops] {symbol}: SKIP (no position)")
-                continue
+    for r in risks:
+        seen += 1
+        symbol = r.get("symbol")
+        try:
+            amt = float(r.get("positionAmt", "0") or 0.0)
+            liq = float(r.get("liquidationPrice", "0") or 0.0)
+        except (ValueError, TypeError) as e:
+            if cfg.verbose:
+                log_fn(f"[stops] {symbol}: SKIP (bad numeric parse: {e})")
+            continue
+        if amt == 0.0:
+            # this is commented bcs it prints all the symbols with no positions
+            # if cfg.verbose:
+            #     log_fn(f"[stops] {symbol}: SKIP (no position)")
+            continue
 
-            with_pos += 1
+        with_pos += 1
 
-            if liq <= 0.0:
-                no_liq += 1
-                if cfg.verbose:
-                    log_fn(f"[stops] {symbol}: SKIP (no liquidationPrice yet)")
-                continue
+        if liq <= 0.0:
+            no_liq += 1
+            if cfg.verbose:
+                log_fn(f"[stops] {symbol}: SKIP (no liquidationPrice yet)")
+            continue
 
-            if has_protective_stop_for_symbol(all_open_orders, symbol):
-                already += 1
-                if cfg.verbose:
-                    log_fn(f"[stops] {symbol}: SKIP (protective stop already present)")
-                continue
+        if has_protective_stop_for_symbol(all_open_orders, symbol):
+            already += 1
+            if cfg.verbose:
+                log_fn(f"[stops] {symbol}: SKIP (protective stop already present)")
+            continue
 
-            last_attempt = state.last_stop_attempt_ts_by_symbol.get(symbol, 0.0)
-            if _now() - last_attempt < cfg.stops_retry_cooldown_sec:
-                cooldown += 1
-                if cfg.verbose:
-                    wait_s = int(cfg.stops_retry_cooldown_sec - (_now() - last_attempt))
-                    log_fn(f"[stops] {symbol}: SKIP (cooldown ~{wait_s}s)")
-                continue
+        last_attempt = state.last_stop_attempt_ts_by_symbol.get(symbol, 0.0)
+        if time.time() - last_attempt < cfg.stops_retry_cooldown_sec:
+            cooldown += 1
+            if cfg.verbose:
+                wait_s = int(cfg.stops_retry_cooldown_sec - (time.time() - last_attempt))
+                log_fn(f"[stops] {symbol}: SKIP (cooldown ~{wait_s}s)")
+            continue
 
-            # tickSize disponible?
-            filt = sym_filters.get(symbol)
-            if not filt or "tickSize" not in filt:
-                skipped_missing_tick += 1
-                if cfg.verbose:
-                    log_fn(f"[stops] {symbol}: SKIP (no tickSize in filters)")
-                continue
+        # tickSize disponible?
+        filt = sym_filters.get(symbol)
+        if not filt or "tickSize" not in filt:
+            skipped_missing_tick += 1
+            if cfg.verbose:
+                log_fn(f"[stops] {symbol}: SKIP (no tickSize in filters)")
+            continue
 
-            tick = filt["tickSize"]
-            side_entry = "BUY" if amt > 0 else "SELL"
-            side_close, stop_price = plan_stop_near_liq(
-                side_entry=side_entry,
-                liq_price=liq,
-                tick=tick,
-                buffer_pct=cfg.stop_near_liq_buffer_pct,
-                min_gap_ticks=1  # mínimo 1 tick de separación
-            )
-
-            if cfg.dry_run:
-                log_fn(
-                    f"DRYRUN STOP {symbol}: closePosition {side_close} @ {stop_price} "
-                    f"(liq={liq}, buf={cfg.stop_near_liq_buffer_pct:.2f}%, tick={tick}, working={cfg.stop_working_type})"
-                )
-            else:
-                client.place_order(
-                    symbol=symbol,
-                    side=side_close,
-                    type_="STOP_MARKET",
-                    quantity="0",
-                    stop_price=f"{stop_price:.8f}",
-                    close_position=True,
-                    working_type=cfg.stop_working_type,
-                    sym_filters=sym_filters
-                )
-                log_fn(
-                    f"STOP set near liq: {symbol} @ {stop_price} "
-                    f"(liq={liq}, buf={cfg.stop_near_liq_buffer_pct:.2f}%, tick={tick})"
-                )
-            placed += 1
-            state.last_stop_attempt_ts_by_symbol[symbol] = _now()
-
-        state.save(cfg.state_path)
-
-        # Resumen final
-        log_fn(
-            f"[stops] seen={seen} with_pos={with_pos} placed={placed} "
-            f"already={already} no_liq={no_liq} cooldown={cooldown} missing_tick={skipped_missing_tick}"
+        tick = filt["tickSize"]
+        side_entry = "BUY" if amt > 0 else "SELL"
+        side_close, stop_price = plan_stop_near_liq(
+            side_entry=side_entry,
+            liq_price=liq,
+            tick=tick,
+            buffer_pct=cfg.stop_near_liq_buffer_pct,
+            min_gap_ticks=1  # mínimo 1 tick de separación
         )
 
-    except Exception as e:
-        log_fn(f"[stops] ERROR: {e}")
+        if cfg.dry_run:
+            log_fn(
+                f"DRYRUN STOP {symbol}: closePosition {side_close} @ {stop_price} "
+                f"(liq={liq}, buf={cfg.stop_near_liq_buffer_pct:.2f}%, tick={tick}, working={cfg.stop_working_type})"
+            )
+        else:
+            client.place_order(
+                symbol=symbol,
+                side=side_close,
+                type_="STOP_MARKET",
+                quantity="0",
+                stop_price=f"{stop_price:.8f}",
+                close_position=True,
+                working_type=cfg.stop_working_type,
+                sym_filters=sym_filters
+            )
+            log_fn(
+                f"STOP set near liq: {symbol} @ {stop_price} "
+                f"(liq={liq}, buf={cfg.stop_near_liq_buffer_pct:.2f}%, tick={tick})"
+            )
+        placed += 1
+        state.last_stop_attempt_ts_by_symbol[symbol] = time.time()
+
+    state.save(cfg.state_path)
+
+    if cfg.verbose:
+        end_local = datetime.now(cfg.tz_local).strftime("%Y-%m-%d %H:%M:%S %Z%z")
+        elapsed = time.time() - start_ts
+        log_fn(
+            f"[{end_local}] --- ensure_protective_stops END --- "
+            f"(took {elapsed:.2f}s) "
+            f"| seen={seen} with_pos={with_pos} placed={placed} "
+            f"already={already} no_liq={no_liq} cooldown={cooldown} "
+            f"missing_tick={skipped_missing_tick}"
+        )
