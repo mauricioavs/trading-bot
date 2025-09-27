@@ -217,7 +217,7 @@ def ensure_protective_stops(cfg: Config, client: BinanceFutures, state: BotState
     state.save(cfg.state_path)
 
     if cfg.verbose:
-        end_local = datetime.now(cfg.tz_local).strftime("%Y-%m-%d %H:%M:%S %Z%z")
+        end_local = datetime.now(cfg.tz_local).strftime("%Y-%m-%d %H:%M:%S %Z")
         elapsed = time.time() - start_ts
         log_fn(
             f"[{end_local}] --- ensure_protective_stops END --- "

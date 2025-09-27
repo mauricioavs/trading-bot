@@ -22,7 +22,7 @@ def run_loop_once(cfg: Config, client: BinanceFutures, state: BotState, log_fn=p
     # housekeeping: cancel orders older than 24h
     if cfg.verbose:
         start_ts = time.time()
-        now_local = datetime.now(cfg.tz_local).strftime("%Y-%m-%d %H:%M:%S %Z%z")
+        now_local = datetime.now(cfg.tz_local).strftime("%Y-%m-%d %H:%M:%S %Z")
         log_fn(f"[{now_local}] --- run_loop_once ---")
 
     cancel_stale_orders(client, cfg.max_order_age_hours, cfg.dry_run, log_fn)
@@ -85,7 +85,7 @@ def run_loop_once(cfg: Config, client: BinanceFutures, state: BotState, log_fn=p
         time.sleep(random.uniform(cfg.per_symbol_delay_min, cfg.per_symbol_delay_max))
 
     if cfg.verbose:
-        end_local = datetime.now(cfg.tz_local).strftime("%Y-%m-%d %H:%M:%S %Z%z")
+        end_local = datetime.now(cfg.tz_local).strftime("%Y-%m-%d %H:%M:%S %Z")
         elapsed = time.time() - start_ts
         log_fn(f"[{end_local}] --- run_loop_once END --- (took {elapsed:.2f}s)")
 
