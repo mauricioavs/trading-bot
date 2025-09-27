@@ -28,7 +28,6 @@ def cfg():
         min_atr_pct=0.1,
         near_level_pct=0.2,
         offset_from_level_pct=0.05,
-        stop_buffer_pct=0.05,
         max_order_age_hours=24,
         universe_size=5,
         symbols_whitelist=tuple(),

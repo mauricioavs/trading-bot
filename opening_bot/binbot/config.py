@@ -33,7 +33,6 @@ class Config:
     min_atr_pct: float = float(os.getenv("MIN_ATR_PCT", "0.5"))
     near_level_pct: float = float(os.getenv("NEAR_LEVEL_PCT", "0.15"))
     offset_from_level_pct: float = float(os.getenv("OFFSET_FROM_LEVEL_PCT", "0.05"))
-    stop_buffer_pct: float = float(os.getenv("STOP_BUFFER_PCT", "0.05"))
     max_order_age_hours: int = int(os.getenv("MAX_ORDER_AGE_HOURS", "24")) # after this hours, orders should be deleted
     order_cooldown_hours: int = int(os.getenv("COOLDOWN_HOURS", "24")) # hours to make another order of same symnol
     range_exclude_recent_bars: int = int(os.getenv("RANGE_EXCLUDE_RECENT_BARS", "0")) # exludes most recent N bars from low and high calc, in order to skip tendencies
