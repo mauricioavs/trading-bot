@@ -26,7 +26,7 @@ python --version
 this is how files are sent via ssh:
 
 Structure of following command:
-scp -ri <key_path> <folder_to_send> ec2-user@<public_ip>:/home/ec2-user
+scp -ri <key_path> <folder_to_send> ec2-user@<public_dns>:/home/ec2-user
 
 command to send files and folders:
 scp -ri keys/europe.pem production ec2-user@ec2-3-67-84-48.eu-central-1.compute.amazonaws.com:/home/ec2-user
@@ -44,8 +44,8 @@ pip install --no-cache-dir -r requirements.txt
 Note: Reboot instance if space is overloaded:
 sudo reboot
 
-also install:
-sudo yum install tmux (asks confirmation)
+also install (asks confirmation):
+sudo yum install tmux
 
 run python script:
 tmux new -s script
